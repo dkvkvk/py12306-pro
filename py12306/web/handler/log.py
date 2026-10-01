@@ -13,8 +13,8 @@ from py12306.user.user import User
 log = Blueprint('log', __name__)
 
 
-@log.route('/log/output', methods=['GET'])
-@jwt_required
+@log.route('/log/output', methods=['GET'], endpoint="log_output")
+@jwt_required()
 def log_output():
     """
     日志

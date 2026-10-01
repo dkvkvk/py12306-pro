@@ -25,8 +25,8 @@ def login():
     return jsonify({"msg": "用户名或密码错误"}), 422
 
 
-@user.route('/users', methods=['GET'])
-@jwt_required
+@user.route('/users', methods=['GET'], endpoint="users")
+@jwt_required()
 def users():
     """
     用户任务列表
@@ -37,8 +37,8 @@ def users():
     return jsonify(result)
 
 
-@user.route('/user/info', methods=['GET'])
-@jwt_required
+@user.route('/user/info', methods=['GET'], endpoint="user_info")
+@jwt_required()
 def user_info():
     """
     获取用户信息

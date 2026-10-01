@@ -6,6 +6,10 @@
 # lxml 6.x 起要求 Python >= 3.13；3.11 镜像上必须留在 5.x
 lxml<6
 
+# lxml_html_clean 是 lxml>=5 拆出来的包，requests-html 直接 import 它。
+# 注意 0.4.5 起要求 lxml>=6.1.1，和上面的 lxml<6 冲突，所以钉在 0.4.4
+lxml_html_clean<=0.4.4
+
 # cssselect 2.x 重写了接口，pyquery 2.1 之前的取值/伪类行为有差异
 cssselect<2
 

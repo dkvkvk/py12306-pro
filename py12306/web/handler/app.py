@@ -27,8 +27,8 @@ def index():
     return result
 
 
-@app.route('/app/menus', methods=['GET'])
-@jwt_required
+@app.route('/app/menus', methods=['GET'], endpoint="menus")
+@jwt_required()
 def menus():
     """
     菜单列表
@@ -43,8 +43,8 @@ def menus():
     return jsonify(menus)
 
 
-@app.route('/app/actions', methods=['GET'])
-@jwt_required
+@app.route('/app/actions', methods=['GET'], endpoint="actions")
+@jwt_required()
 def actions():
     """
     操作列表

@@ -192,6 +192,27 @@ pip install --dry-run --ignore-installed --python-version 3.11 --only-binary=:al
 **已验证**：锁文件里每个版本都在 PyPI 上有 `cp311` 的 manylinux/musllinux wheel 或纯 Python wheel，
 `python:3.11-slim` 上不会触发源码编译（唯一例外 `pyppeteer-box` 只有 sdist，自身无 C 扩展）。
 
+**锁文件是程序化生成的，不要手改**：
+
+```bash
+pip install --dry-run --ignore-installed --python-version 3.11 --only-binary=:all: \
+  --report req_report.json -r requirements.in -c constraints-py311.txt
+python tools/gen_lockfile.py        # 生成锁文件并逐个回查 PyPI 的 wheel
+python tools/audit_imports.py       # 对账：上游真正 import 的包是否都在锁文件里
+python tools/verify_install.py      # 干净环境：按锁文件装完后所有模块能否 import
+```
+
+这三个脚本是补出来的，因为**手工维护锁文件踩了两次坑**：
+
+1. 漏了 `lxml_html_clean`：`lxml>=5` 把 `lxml.html.clean` 拆成独立包，而 `requests-html` 直接
+   import 它 —— 干净环境里 `requests_html` 一导入就 ImportError，上游整个挂掉。
+2. 漏了 `pypng` / `DingtalkChatbot` / `lightpush`：上游 `helpers/qrcode.py` 与
+   `helpers/notification.py` 直接 import。
+
+而且这两个坑**在开发机的 venv 里全都看不出来**（那里恰好有旧版残留），
+只有"干净环境 + 全量 import"才能暴露。`tests/test_boot.py` 就是为此加的：它会把
+上游每一个模块逐个 import，任何一个缺失依赖都会让 CI 先红。
+
 Compose 编排（spec 第 2 节）：Redis `--appendonly yes` + healthcheck + 四个命名卷，
 `py12306` 用 `depends_on: condition: service_healthy` 等 Redis 真就绪，
 **登录态卷（`runtime-data`）与业务数据卷分开挂**。
@@ -219,7 +240,7 @@ Compose 编排（spec 第 2 节）：Redis `--appendonly yes` + healthcheck + �
 pytest -q --basetemp=.pytest-tmp      # 全部离线：不联网、不连 Redis、不 sleep
 ```
 
-当前 **325 个用例**，覆盖：
+当前 **357 个用例**，覆盖：
 
 | 文件 | 覆盖 |
 |---|---|
@@ -259,7 +280,7 @@ railkit/
 py12306/
   panel/                    # 可视化面板（Flask 蓝图 + 零构建 UI）
   ...                       # 上游业务代码（仅 web.py 有最小改动：JWT 密钥 + 注册面板蓝图）
-tests/                      # 325 个离线用例
+tests/                      # 357 个离线用例
 tools/                      # 仿真指标、CDP 截图、图标生成
 docker-compose.yml          # Redis(appendonly) + py12306，健康检查与卷分离
 ```
@@ -269,10 +290,26 @@ docker-compose.yml          # Redis(appendonly) + py12306，健康检查与卷�
 ## 9. 与上游的关系
 
 - 保留上游全部业务逻辑（登陆、下单、乘客、CDN、集群），上游 Web 界面原样可用。
-- 对上游的**唯一侵入式改动**：`py12306/web/web.py`（移除硬编码 JWT 密钥 + 注册面板蓝图），
-  以及 `main.py` 更名为 `upstream_entry.py`（内容不变）。
 - 其余全部是**新增层**（`railkit/`、`py12306/panel/`），可单独测试、可单独摘除。
 - 上游 `docker-compose.yml.example` / `env*.py.example` 保留，便于对照与回退。
+
+### 9.1 对上游的必要修补（都是"照着 spec 升级依赖后被撞出来的"）
+
+规格书列的基线依赖是 `Flask-JWT-Extended==3.15.0`、`Jinja2==2.10` 那一代；上游仓库后来被
+dependabot 升到了 4.x/3.1.x，但**代码没有跟着适配**。撞出来的问题：
+
+| 问题 | 现象 | 修法 |
+|---|---|---|
+| `@jwt_required` 在 4.x 变成装饰器工厂 | 裸用 `@jwt_required` 时请求报 `TypeError: wrapper() missing 1 required positional argument: 'fn'`，所有鉴权接口 500 | 8 处改成 `@jwt_required()`（`tools/fix_jwt_required_calls.py`） |
+| `@jwt_required` 不再保留 `__name__` | 同一蓝图下多个受保护路由的 endpoint 全退化成 `bp.wrapper`，Web 启动即抛 `View function mapping is overwriting an existing endpoint function` —— **上游 Web 界面完全起不来** | 8 个路由补显式 `endpoint=`（`tools/fix_jwt_endpoints.py`） |
+| 硬编码 JWT 密钥 `'secret'` | 管理接口可被伪造 token 访问（spec 第 7 条点名） | 改成必须来自 `JWT_SECRET_KEY`，缺失即拒绝启动 |
+| `Web.__init__` 重复注册蓝图 | Web 被重建（配置变更/单例复位）时抛同样的 endpoint 冲突 | 注册改为幂等 |
+| `Config()` 在配置文件缺失时崩 | `os.path.getmtime` 抛 `FileNotFoundError` —— **纯环境变量部署的容器起不来** | `get_file_modify_time` 对不存在的文件返回 0 |
+
+后两条不是"升级兼容"，是上游本身的健壮性缺陷，但只要用 `.env` 部署就一定会踩到。
+
+`tests/test_boot.py` 把这些都锁住了：逐个 import 上游模块、断言路由齐全且 endpoint 不冲突、
+跑一遍"登录取 token → 访问受保护路由"的端到端链路。
 
 ---
 

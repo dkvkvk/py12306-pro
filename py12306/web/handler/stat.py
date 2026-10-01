@@ -9,8 +9,8 @@ from py12306.user.user import User
 stat = Blueprint('stat', __name__)
 
 
-@stat.route('/stat/dashboard', methods=['GET'])
-@jwt_required
+@stat.route('/stat/dashboard', methods=['GET'], endpoint="dashboard")
+@jwt_required()
 def dashboard():
     """
     状态统计
@@ -33,8 +33,8 @@ def dashboard():
     return jsonify(res)
 
 
-@stat.route('/stat/cluster', methods=['GET'])
-@jwt_required
+@stat.route('/stat/cluster', methods=['GET'], endpoint="clusters")
+@jwt_required()
 def clusters():
     """
     节点统计

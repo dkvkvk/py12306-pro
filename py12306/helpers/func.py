@@ -97,6 +97,11 @@ def timestamp_to_time(timestamp):
 
 
 def get_file_modify_time(filePath):
+    # 配置文件不存在是合法状态（纯环境变量部署时就没有 env.py）。
+    # 上游原实现直接 os.path.getmtime，文件缺失会抛 FileNotFoundError，
+    # 导致 Config() 构造失败——容器用 .env 部署时直接起不来。
+    if not os.path.exists(filePath):
+        return 0
     timestamp = os.path.getmtime(filePath)
     return timestamp_to_time(timestamp)
 

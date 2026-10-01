@@ -9,8 +9,8 @@ from py12306.query.query import Query
 query = Blueprint('query', __name__)
 
 
-@query.route('/query', methods=['GET'])
-@jwt_required
+@query.route('/query', methods=['GET'], endpoint="query_lists")
+@jwt_required()
 def query_lists():
     """
     查询任务列表

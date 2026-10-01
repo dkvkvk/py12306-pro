@@ -12,6 +12,37 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 
+@pytest.fixture(autouse=True)
+def disable_upstream_config_watcher(monkeypatch):
+    """上游 Config 会在构造时起一个后台线程轮询配置文件。
+
+    这个线程在测试里只会带来麻烦（文件不存在就一直 poll、退出时挂住 pytest），
+    所以在整个测试会话里统一关掉。
+    """
+    try:
+        from py12306.config import Config
+    except Exception:  # 依赖缺失时跳过，不影响其它测试
+        return
+    monkeypatch.setattr(Config, "watch_file_change", lambda self: None)
+    monkeypatch.delattr(Config, "__it__", raising=False)
+
+
+@pytest.fixture(autouse=True)
+def block_upstream_network(monkeypatch):
+    """测试必须离线：上游 Query 初始化时会真的去请求 12306。
+
+    Query.__init__ -> request_device_id() -> GET 12306 取设备指纹，
+    离线环境下会一直阻塞（测试挂死就是这么来的）。
+    """
+    try:
+        from py12306.query.query import Query
+    except Exception:
+        return
+    monkeypatch.setattr(Query, "request_device_id", lambda self, force_renew=False: None)
+    monkeypatch.setattr(Query, "request_device_id2", lambda self: None)
+    monkeypatch.setattr(Query, "get_query_api_type", classmethod(lambda cls: "leftTicket/queryZ"))
+
+
 class FakeClock:
     """可手动推进的单调时钟，用于确定性地测试退避/熔断时序。"""
 

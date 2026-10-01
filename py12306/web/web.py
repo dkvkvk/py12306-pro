@@ -48,14 +48,17 @@ class Web:
         from py12306.web.handler.app import app
         from py12306.web.handler.query import query
         from py12306.web.handler.log import log
-        self.session.register_blueprint(user)
-        self.session.register_blueprint(stat)
-        self.session.register_blueprint(app)
-        self.session.register_blueprint(query)
-        self.session.register_blueprint(log)
         # 可视化面板：独立路由 /panel，默认仅本机可访问（见 py12306/panel/view.py）
         from py12306.panel.view import panel
-        self.session.register_blueprint(panel)
+
+        # 幂等注册：Web 实例被重建时（配置变更、测试里复位单例）
+        # 重复 register_blueprint 会让 Flask 抛
+        # "View function mapping is overwriting an existing endpoint function"，
+        # 直接导致 Web 起不来。
+        for blueprint in (user, stat, app, query, log, panel):
+            if blueprint.name in self.session.blueprints:
+                continue
+            self.session.register_blueprint(blueprint)
 
     @classmethod
     def run(cls):
