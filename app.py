@@ -2,7 +2,8 @@
 
 用法:
     python app.py                 启动桌面窗口（默认）
-    python app.py -t / --test     命令行自检，结果同时写到 数据目录/logs/selfcheck.txt
+    python app.py -t / --test     命令行自检（无界面），结果同时写到 数据目录/logs/selfcheck.txt
+    python app.py --selfcheck 5   起窗口后自检 5 秒再退出（CI 用它验证打包出的 exe 可用）
     python app.py serve           只启动 Web 面板（不开窗口）
     python app.py waitlist        候补模式（官方渠道）
     python app.py -h              查看全部参数
@@ -117,13 +118,15 @@ def _run_gui(argv: list[str]) -> int:
 
         def report_and_quit() -> None:
             snapshot = monitor.snapshot(buckets=5)
-            # 判定标准：窗口起来了 + 刷新循环在跑（任务多少取决于有没有配置）
-            ok = snapshot.ts > 0
-            line = "SELFCHECK %s version=%s tasks=%d engine_running=%s\n" % (
+            # 判定标准：窗口起来了 + 定时刷新在跑 + 能读到指标库（与有没有配任务无关）
+            ok = bool(snapshot.ts > 0 and snapshot.metrics_db)
+            # 第一行必须以 OK/FAIL 开头：CI 用 grep "^OK" 判定打包出的 exe 是否可用
+            line = "%s version=%s tasks=%d engine_running=%s metrics_db=%s\n" % (
                 "OK" if ok else "FAIL",
                 __version__,
                 snapshot.task_count,
                 snapshot.engine_running,
+                snapshot.metrics_db or "-",
             )
             print(line.strip())
             try:

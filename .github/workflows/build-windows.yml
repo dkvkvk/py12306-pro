@@ -1,0 +1,134 @@
+name: 构建 Windows 桌面程序
+
+# 触发：推 main 自动构建（产物在 Artifacts，保留 3 天）；打 v* 标签则创建 Release。
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-windows:
+    name: Windows exe 与安装包
+    runs-on: windows-latest
+    timeout-minutes: 40
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: 读取版本号
+        id: ver
+        shell: bash
+        run: |
+          v=$(python -c "import sys; sys.path.insert(0,'.'); from core.version import __version__ as x; print(x)")
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "本次版本：$v"
+
+      - name: 同步版本号到 exe 资源
+        run: python packaging/sync_version.py
+
+      - name: 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.in -c constraints-py311.txt
+          pip install pyinstaller
+
+      - name: 跑测试（离线）
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python -m pytest tests -q
+
+      - name: PyInstaller 打包
+        run: pyinstaller packaging/py12306.spec --noconfirm
+
+      - name: 打包结果自检（验证 exe 真的能起来）
+        shell: pwsh
+        env:
+          PY12306_DATA_DIR: ${{ runner.temp }}\py12306_data
+        run: |
+          # 不起 offscreen：这样才能验证真实 Windows 平台插件被打进去了
+          $exe = ".\dist\py12306\py12306.exe"
+          if (-not (Test-Path $exe)) { Write-Error "没找到 exe"; exit 1 }
+          Write-Host ("exe 大小: {0:N1} MB" -f ((Get-Item $exe).Length / 1MB))
+          $p = Start-Process -FilePath $exe -ArgumentList "--selfcheck", "6" -Wait -PassThru
+          $log = Join-Path $env:PY12306_DATA_DIR "logs\selfcheck.txt"
+          if (Test-Path $log) { Get-Content $log } else { Write-Error "自检没有写日志: $log"; exit 1 }
+          if ($p.ExitCode -ne 0) { Write-Error "exe 自检失败 exit=$($p.ExitCode)"; exit 1 }
+          if (-not (Select-String -Path $log -Pattern "^OK" -Quiet)) { Write-Error "自检结果不是 OK"; exit 1 }
+          & $exe -t --offline | Select-Object -Last 3
+
+      - name: 准备便携版压缩包
+        shell: pwsh
+        run: |
+          $ver = "${{ steps.ver.outputs.version }}"
+          $name = "py12306-v$ver-windows-x64"
+          New-Item -ItemType Directory -Force -Path "dist\$name" | Out-Null
+          Copy-Item -Recurse "dist\py12306\*" "dist\$name\"
+          Copy-Item "packaging\EULA.txt" "dist\$name\许可与风险声明.txt"
+          Copy-Item ".env.example" "dist\$name\"
+          Compress-Archive -Path "dist\$name\*" -DestinationPath "dist\$name.zip" -Force
+          Write-Host "便携版: dist\$name.zip"
+
+      - name: 安装 Inno Setup 6.7.3
+        shell: pwsh
+        run: |
+          curl.exe -L -o inno.exe https://github.com/jrsoftware/issrc/releases/download/is-6_7_3/innosetup-6.7.3.exe
+          if ((Get-Item .\inno.exe).Length -lt 1MB) { Write-Error "Inno Setup 下载不完整"; exit 1 }
+          Start-Process -FilePath ".\inno.exe" -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/DIR=C:\inno" -Wait
+          Add-Content $env:GITHUB_PATH "C:\inno"
+
+      - name: 生成安装包
+        run: ISCC /DMyVersion=${{ steps.ver.outputs.version }} packaging\installer.iss
+
+      - name: 列出产物
+        run: Get-ChildItem dist -Recurse -Include *.exe,*.zip | Select-Object FullName,Length
+
+      - name: 上传产物（Artifacts）
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: py12306-windows-v${{ steps.ver.outputs.version }}
+          path: |
+            dist/py12306-Setup-v*.exe
+            dist/py12306-v*-windows-x64.zip
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: 挂到 Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/py12306-Setup-v*.exe
+            dist/py12306-v*-windows-x64.zip
+          generate_release_notes: true
+          body: |
+            ## py12306 抢票助手 ${{ steps.ver.outputs.version }}
+
+            > **风险提示**：本工具违反 12306 服务条款，使用即承担账号被封、订单被取消的风险；
+            > 12306 风控会识别高频请求，做了退避也无法保证不被封。
+            > **官方候补功能是更稳妥的选择**，本程序也内置候补模式（走官方渠道）。
+
+            ### 下载哪一个
+            | 文件 | 说明 |
+            |---|---|
+            | py12306-Setup-v${{ steps.ver.outputs.version }}.exe | 安装版（推荐）：中文向导、桌面快捷方式、可卸载 |
+            | py12306-v${{ steps.ver.outputs.version }}-windows-x64.zip | 便携版：解压即用，不写注册表 |
+
+            ### 第一次使用
+            1. 安装/解压后启动程序
+            2. 打开「设置」页，按提示在数据目录里创建 .env（可参考随包附带的 .env.example），填账号与查询任务
+            3. 点「开始抢票」
+
+            未签名程序首次运行会出现 SmartScreen 蓝色提示，点「更多信息 → 仍要运行」即可。

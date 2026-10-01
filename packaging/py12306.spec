@@ -2,7 +2,7 @@
 """PyInstaller 打包配置：把桌面程序打成 exe。
 
 用法（Windows）:
-    .venv\Scripts\pyinstaller packaging\py12306.spec --noconfirm
+    .venv/Scripts/pyinstaller packaging/py12306.spec --noconfirm
 产物:
     dist/py12306/py12306.exe
 
@@ -27,6 +27,11 @@ if example.is_file():
 icon = ROOT / "packaging" / "app_icon.ico"
 if not icon.is_file():
     icon = None
+
+# exe 文件属性（右键 -> 属性 -> 详细信息）；版本号由 packaging/sync_version.py 同步
+version_file = ROOT / "packaging" / "version_info.txt"
+if not version_file.is_file():
+    version_file = None
 
 hiddenimports = [
     "PySide6.QtCore",
@@ -78,6 +83,7 @@ exe = EXE(  # noqa: F821
     console=False,
     disable_windowed_traceback=False,
     icon=str(icon) if icon else None,
+    version=str(version_file) if version_file else None,
 )
 coll = COLLECT(  # noqa: F821
     exe,
