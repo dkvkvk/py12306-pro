@@ -296,6 +296,52 @@ class TestRetryAndBackoff:
         assert runner.checks == 3
         assert any("达到上限" in m.body for m in memory.messages)
 
+    def test_polling_uses_injected_sleeper(self):
+        """回归：run_until_terminal 曾经忽略构造时注入的 sleeper，直接 time.sleep。
+
+        表现是「测试里传了 sleeper 却真的等了 90 秒」（CLI --simulate 直接挂死）。
+        """
+        recorded = []
+        hub = NotifyHub([MemoryAdapter()], sleep=lambda _s: None)
+        runner = WaitlistRunner(
+            SimulatedBackend([WaitlistState.QUEUED, WaitlistState.FULFILLED]),
+            make_request(),
+            hub=hub,
+            config=WaitlistRunnerConfig(max_checks=4),
+            sleeper=recorded.append,
+        )
+        status = runner.run_until_terminal()
+        assert status.state == WaitlistState.FULFILLED
+        assert recorded, "轮询路径必须走注入的 sleeper，而不是 time.sleep"
+        assert all(value > 0 for value in recorded)
+
+    def test_explicit_sleeper_argument_wins(self):
+        recorded = []
+        hub = NotifyHub([MemoryAdapter()], sleep=lambda _s: None)
+        runner = WaitlistRunner(
+            SimulatedBackend([WaitlistState.FULFILLED]),
+            make_request(),
+            hub=hub,
+            config=WaitlistRunnerConfig(max_checks=3),
+            sleeper=lambda _s: (_ for _ in ()).throw(AssertionError("不应使用构造时的 sleeper")),
+        )
+        assert runner.run_until_terminal(sleeper=recorded.append).state == WaitlistState.FULFILLED
+        assert recorded
+
+    def test_max_checks_stops_simulated_spin(self):
+        """模拟脚本用尽后会停在最后一个状态，必须有上限兜住。"""
+        hub = NotifyHub([MemoryAdapter()], sleep=lambda _s: None)
+        runner = WaitlistRunner(
+            SimulatedBackend([WaitlistState.QUEUED]),
+            make_request(),
+            hub=hub,
+            config=WaitlistRunnerConfig(max_checks=3, first_check_seconds=0.001),
+            sleeper=lambda _s: None,
+        )
+        status = runner.run_until_terminal()
+        assert status.state == WaitlistState.QUEUED
+        assert runner.checks == 3
+
     def test_query_exception_is_reported_not_raised(self):
         class BrokenBackend(SimulatedBackend):
             def query(self, order_id=""):

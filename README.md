@@ -156,7 +156,17 @@ delay = next_query_delay(timing, pre_sale=False, stream=stream, override=4.0)
 WAITLIST_JSON={"left_date":"2026-10-01","left_station":"北京","arrive_station":"上海",
   "train_numbers":["G1","G3"],"seat_types":["O"],"accept_no_seat":true,
   "passengers":[{"passenger_name":"张三","passenger_id_no":"110101...","passenger_id_type_code":"1","passenger_type":"1"}]}
+
+# 三种用法
+python main.py waitlist --dry-run     # 只打印将要提交的表单与端点，不发请求
+python main.py waitlist --simulate    # 离线演练：模拟后端跑通状态机 + 告警（不碰网络）
+python main.py waitlist               # 真实提交并轮询；兑现/失败/取消都会告警
+python main.py waitlist --once        # 只查一次状态
 ```
+
+`--simulate` 是给"先看看会发生什么"用的：它构造 `SimulatedBackend`，
+把 `sleeper` 换成空函数（不真的等 90 秒），最多查 6 次，
+同时把候补状态写进指标库 —— 所以**跑完之后面板的任务列表里会出现这条候补**。
 
 - 状态机：`pending_submit → queued → fulfilled / failed / expired / canceled`，
   **只在状态真的变化时告警**，不会每分钟一条噪音。
@@ -240,7 +250,7 @@ Compose 编排（spec 第 2 节）：Redis `--appendonly yes` + healthcheck + �
 pytest -q --basetemp=.pytest-tmp      # 全部离线：不联网、不连 Redis、不 sleep
 ```
 
-当前 **357 个用例**，覆盖：
+当前 **374 个用例**，覆盖：
 
 | 文件 | 覆盖 |
 |---|---|
@@ -252,7 +262,9 @@ pytest -q --basetemp=.pytest-tmp      # 全部离线：不联网、不连 Redis�
 | `tests/test_metrics.py` | 采集、分位、时间序列分桶、重启回载、Prometheus 导出与标签转义 |
 | `tests/test_integration.py` | 假 Job/假响应：结果分类、熔断真的阻断查询、抖动真实存在、逐组合独立、组合上限、开售窗 |
 | `tests/test_panel.py` | 访问控制（本机/远程/Token/XFF）、各 API、动作接口、密钥不外泄、零外部 CDN |
-| `tests/test_waitlist.py` | 状态解析保守性、表单构造、离线端到端、退避、去重告警 |
+| `tests/test_waitlist.py` | 状态解析保守性、表单构造、离线端到端、退避、去重告警、注入的 sleeper 必须生效 |
+| `tests/test_cli.py` | 入口分发、候补命令三种模式、dry-run 表单、模拟模式离线性与指标落库、环境变量桥接 |
+| `tests/test_boot.py` | 上游 42 个模块逐个 import、路由齐全且无 endpoint 冲突、登录取 token 访问受保护路由 |
 
 时序类测试全部用**假时钟**，不 sleep，跑得快且不 flaky。UI 渲染另有
 `tools/cdp_screenshot.mjs`（用本机 Chrome 的 CDP 截图并回报控制台错误、卡片数、图表元素数）。
@@ -280,7 +292,7 @@ railkit/
 py12306/
   panel/                    # 可视化面板（Flask 蓝图 + 零构建 UI）
   ...                       # 上游业务代码（仅 web.py 有最小改动：JWT 密钥 + 注册面板蓝图）
-tests/                      # 357 个离线用例
+tests/                      # 374 个离线用例
 tools/                      # 仿真指标、CDP 截图、图标生成
 docker-compose.yml          # Redis(appendonly) + py12306，健康检查与卷分离
 ```

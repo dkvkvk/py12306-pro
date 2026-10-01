@@ -508,9 +508,14 @@ class WaitlistRunner:
         return self.status
 
     def run_until_terminal(self, *, max_checks: Optional[int] = None, sleeper: Optional[Callable[[float], None]] = None) -> WaitlistStatus:
-        """同步跑到底。sleeper 可注入（测试里传空函数就不真的等）。"""
+        """同步跑到底。
+
+        sleeper 的优先级：显式参数 > 构造时注入的 sleeper > time.sleep。
+        之前这里直接取 time.sleep，导致构造时注入的 sleeper 在提交重试路径上用到了、
+        在轮询路径上却被忽略 —— 表现为「测试里传了 sleeper 还是真的等了 90 秒」。
+        """
         limit = max_checks if max_checks is not None else self.config.max_checks
-        sleep_fn = sleeper or time.sleep
+        sleep_fn = sleeper or self._sleeper
         if self.status.state == WaitlistState.PENDING_SUBMIT:
             self.submit()
         while not self.status.is_terminal and self.checks < limit:
