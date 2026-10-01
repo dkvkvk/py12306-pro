@@ -23,8 +23,23 @@ class Web:
         self.log.setLevel(logging.ERROR)
 
         self.register_blueprint()
-        self.session.config['JWT_SECRET_KEY'] = 'secret'  # 目前都是本地，暂不用放配置文件
-        self.session.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(seconds=60 * 60 * 24 * 7)  # Token 超时时间 7 天
+        # JWT 密钥必须来自环境变量：硬编码 'secret' 等于管理接口裸奔（spec 第 7 条）
+        import os as _os
+        import secrets as _secrets
+
+        _jwt_secret = _os.environ.get('JWT_SECRET_KEY', '').strip()
+        if not _jwt_secret:
+            if _os.environ.get('DEV_MODE', '0').strip() in ('1', 'true', 'yes', 'on'):
+                _jwt_secret = _secrets.token_urlsafe(48)
+                self.log.warning('DEV_MODE=1 且未设置 JWT_SECRET_KEY，已生成临时密钥（重启即失效）')
+            else:
+                raise RuntimeError(
+                    '缺少 JWT_SECRET_KEY 环境变量，拒绝以硬编码弱密钥启动 Web 服务。'
+                    '生成方式：python -c "import secrets;print(secrets.token_urlsafe(48))"'
+                )
+        self.session.config['JWT_SECRET_KEY'] = _jwt_secret
+        _ttl_minutes = int(_os.environ.get('JWT_TTL_MINUTES') or 720)
+        self.session.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(minutes=_ttl_minutes)
         self.jwt = JWTManager(self.session)
 
     def register_blueprint(self):
@@ -38,6 +53,9 @@ class Web:
         self.session.register_blueprint(app)
         self.session.register_blueprint(query)
         self.session.register_blueprint(log)
+        # 可视化面板：独立路由 /panel，默认仅本机可访问（见 py12306/panel/view.py）
+        from py12306.panel.view import panel
+        self.session.register_blueprint(panel)
 
     @classmethod
     def run(cls):

@@ -1,0 +1,9 @@
+# 统一使用 LF，避免 Windows 检出时把 LF 改成 CRLF 导致 Docker/shell 脚本出问题
+* text=auto eol=lf
+*.png binary
+*.ico binary
+*.sqlite3 binary
+*.py text
+*.sh text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
