@@ -71,7 +71,11 @@ jobs:
           if (Test-Path $log) { Get-Content $log } else { Write-Error "自检没有写日志: $log"; exit 1 }
           if ($p.ExitCode -ne 0) { Write-Error "exe 自检失败 exit=$($p.ExitCode)"; exit 1 }
           if (-not (Select-String -Path $log -Pattern "^OK" -Quiet)) { Write-Error "自检结果不是 OK"; exit 1 }
-          & $exe -t --offline | Select-Object -Last 3
+          # 再顺带跑一次命令行自检（--offline 不连 Redis/网络）
+          $env:RUNTIME_ENC_KEY = "ci-enc-key-0123456789"
+          $env:JWT_SECRET_KEY = "ci-jwt-secret-0123456789-0123456789-0123456789"
+          $env:USER_ACCOUNTS_JSON = '[{"username":"ci","password":"","login_type":"qr"}]'
+          & $exe -t --offline | Select-Object -Last 4
 
       - name: 准备便携版压缩包
         shell: pwsh
