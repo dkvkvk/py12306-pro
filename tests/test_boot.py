@@ -7,7 +7,7 @@ requests-html 会 import lxml.html.clean，而 lxml>=5 已把它拆成独立包�
 
 所以这里显式要求：
 1. 上游 Web 入口与查询任务模块能 import；
-2. railkit 全部子模块能 import；
+2. core 全部子模块能 import；
 3. 面板蓝图能在 Flask 应用上注册（路由存在）；
 4. 上游 Config 能在没有 env.py 的环境里构造出来。
 """
@@ -57,24 +57,24 @@ class TestUpstreamImports:
 
 
 class TestRailkitImports:
-    def test_all_railkit_submodules_import(self):
-        import railkit
+    def test_all_core_submodules_import(self):
+        import core
 
-        names = [info.name for info in pkgutil.iter_modules(railkit.__path__)]
+        names = [info.name for info in pkgutil.iter_modules(core.__path__)]
         assert "metrics" in names and "integration" in names and "waitlist" in names
         for name in names:
-            importlib.import_module("railkit." + name)
+            importlib.import_module("core." + name)
 
     def test_public_api_is_callable(self):
-        from railkit.config import load_config  # noqa: F401
-        from railkit.integration import QueryLoopIntegration  # noqa: F401
-        from railkit.metrics import MetricsStore  # noqa: F401
-        from railkit.notifier import NotifyHub  # noqa: F401
-        from railkit.redaction import redact  # noqa: F401
-        from railkit.risk import RiskBreaker, RiskConfig  # noqa: F401
-        from railkit.runtime_state import LoginStateStore  # noqa: F401
-        from railkit.timing import next_query_delay  # noqa: F401
-        from railkit.waitlist import WaitlistRunner  # noqa: F401
+        from core.config import load_config  # noqa: F401
+        from core.integration import QueryLoopIntegration  # noqa: F401
+        from core.metrics import MetricsStore  # noqa: F401
+        from core.notifier import NotifyHub  # noqa: F401
+        from core.redaction import redact  # noqa: F401
+        from core.risk import RiskBreaker, RiskConfig  # noqa: F401
+        from core.runtime_state import LoginStateStore  # noqa: F401
+        from core.timing import next_query_delay  # noqa: F401
+        from core.waitlist import WaitlistRunner  # noqa: F401
 
         assert RiskBreaker(RiskConfig(), key="boot-check").state == "closed"
 
@@ -83,7 +83,7 @@ class TestPanelBoots:
     def test_blueprint_registers_routes(self):
         from flask import Flask
 
-        from py12306.panel.view import panel
+        from webpanel.view import panel
 
         app = Flask("boot-check")
         app.register_blueprint(panel)
@@ -103,7 +103,7 @@ class TestPanelBoots:
             assert expected in rules, "缺少路由 %s" % expected
 
     def test_ui_assets_exist(self):
-        from py12306.panel import view
+        from webpanel import view
 
         assert view.HTML_PATH.is_file()
         assert view.FAVICON_PATH.is_file()
@@ -111,7 +111,7 @@ class TestPanelBoots:
     def test_index_renders(self):
         from flask import Flask
 
-        from py12306.panel.view import panel
+        from webpanel.view import panel
 
         app = Flask("boot-check-ui")
         app.register_blueprint(panel)
@@ -139,7 +139,7 @@ class TestUpstreamConfigBoots:
     def test_config_bridge_overrides_upstream(self, tmp_path, monkeypatch):
         """环境变量必须能覆盖上游配置，且 int/0-1 型不会变成真值字符串。"""
         from py12306.config import Config
-        from railkit.cli import ConfigBridge
+        from core.cli import ConfigBridge
 
         monkeypatch.setattr(Config, "watch_file_change", lambda self: None)
         monkeypatch.delattr(Config, "__it__", raising=False)

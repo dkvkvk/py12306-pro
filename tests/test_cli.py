@@ -1,4 +1,4 @@
-"""入口引导与候补命令测试（railkit.cli）。全部离线。"""
+"""入口引导与候补命令测试（core.cli）。全部离线。"""
 
 from __future__ import annotations
 
@@ -6,8 +6,8 @@ import json
 
 import pytest
 
-from railkit import cli
-from railkit.metrics import MetricsStore, set_store
+from core import cli
+from core.metrics import MetricsStore, set_store
 
 
 WAITLIST_ENV = {
@@ -42,12 +42,12 @@ def isolated_store(tmp_path):
 class TestDispatch:
     def test_version(self, capsys):
         assert cli.main(["--version"]) == 0
-        assert "railkit" in capsys.readouterr().out
+        assert "core" in capsys.readouterr().out
 
     def test_no_args_prints_usage(self, capsys):
         assert cli.main([]) == 0
         out = capsys.readouterr().out
-        assert "python main.py" in out
+        assert "python app.py" in out
         assert "候补" in out
 
     def test_usage_mentions_risk(self, capsys):

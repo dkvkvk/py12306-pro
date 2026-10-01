@@ -6,8 +6,8 @@ import json
 
 import pytest
 
-from railkit.notifier import Event, MemoryAdapter, NotifyHub
-from railkit.waitlist import (
+from core.notifier import Event, MemoryAdapter, NotifyHub
+from core.waitlist import (
     DEFAULT_ENDPOINTS,
     HttpWaitlistBackend,
     SimulatedBackend,

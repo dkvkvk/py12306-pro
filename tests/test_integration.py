@@ -10,10 +10,10 @@ import time
 
 import pytest
 
-from railkit.integration import IntegrationConfig, JobRiskAdapter, QueryLoopIntegration
-from railkit.metrics import MetricsStore
-from railkit.notifier import MemoryAdapter, NotifyHub
-from railkit.risk import FailureCategory, RiskConfig
+from core.integration import IntegrationConfig, JobRiskAdapter, QueryLoopIntegration
+from core.metrics import MetricsStore
+from core.notifier import MemoryAdapter, NotifyHub
+from core.risk import FailureCategory, RiskConfig
 
 
 class FakeResponse:

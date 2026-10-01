@@ -17,7 +17,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from railkit.metrics import MetricsStore  # noqa: E402
+from core.metrics import MetricsStore  # noqa: E402
 
 TASKS = [
     ("G1234 北京->上海|2026-10-01|北京-上海", "北京->上海 10-01"),

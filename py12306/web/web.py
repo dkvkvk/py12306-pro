@@ -48,8 +48,8 @@ class Web:
         from py12306.web.handler.app import app
         from py12306.web.handler.query import query
         from py12306.web.handler.log import log
-        # 可视化面板：独立路由 /panel，默认仅本机可访问（见 py12306/panel/view.py）
-        from py12306.panel.view import panel
+        # 可视化面板：独立路由 /panel，默认仅本机可访问（见 webpanel/view.py）
+        from webpanel.view import panel
 
         # 幂等注册：Web 实例被重建时（配置变更、测试里复位单例）
         # 重复 register_blueprint 会让 Flask 抛

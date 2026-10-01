@@ -6,7 +6,7 @@ import logging
 
 import pytest
 
-from railkit.redaction import (
+from core.redaction import (
     install,
     COOKIE,
     ID_CARD,
@@ -130,10 +130,10 @@ class TestKnownSecrets:
 class TestLoggingIntegration:
     def test_filter_scrubs_message_and_args(self, caplog):
         policy = RedactionPolicy(literals=["hunter2"])
-        logger = logging.getLogger("railkit.test.redaction")
+        logger = logging.getLogger("core.test.redaction")
         logger.setLevel(logging.INFO)
         install(logger, policy)
-        with caplog.at_level(logging.INFO, logger="railkit.test.redaction"):
+        with caplog.at_level(logging.INFO, logger="core.test.redaction"):
             logger.info("login %s with password=%s", "tester", "hunter2")
         text = caplog.text
         assert "hunter2" not in text
@@ -141,10 +141,10 @@ class TestLoggingIntegration:
 
     def test_filter_handles_dict_args(self, caplog):
         policy = RedactionPolicy()
-        logger = logging.getLogger("railkit.test.dictargs")
+        logger = logging.getLogger("core.test.dictargs")
         logger.setLevel(logging.INFO)
         install(logger, policy)
-        with caplog.at_level(logging.INFO, logger="railkit.test.dictargs"):
+        with caplog.at_level(logging.INFO, logger="core.test.dictargs"):
             logger.info("user %(user)s phone %(phone)s", {"user": "a", "phone": "13812345678"})
         assert "13812345678" not in caplog.text
 

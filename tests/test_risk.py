@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import pytest
 
-from railkit.risk import (
+from core.risk import (
     BreakerRegistry,
     BreakerState,
     FailureCategory,
@@ -16,7 +16,7 @@ from railkit.risk import (
     classify_exception,
     classify_response,
 )
-from railkit.timing import DeterministicJitter, new_stream
+from core.timing import DeterministicJitter, new_stream
 
 
 class RecordingNotifier:

@@ -1,7 +1,7 @@
-"""首次启动自检：python main.py -t
+"""首次启动自检：python app.py -t
 
 规格书第 10 条要求：能列出账号、连通性、Redis 状态；第 12 条要求把风险提示打出来。
-本模块只依赖标准库 + railkit 自身，Redis/Crypto 都做优雅降级，没装也不崩。
+本模块只依赖标准库 + core 自身，Redis/Crypto 都做优雅降级，没装也不崩。
 """
 
 from __future__ import annotations
@@ -59,7 +59,7 @@ class SelfCheckReport:
 
     def as_dict(self) -> Dict[str, Any]:
         return {
-            "railkit_version": __version__,
+            "core_version": __version__,
             "exit_code": self.exit_code,
             "checks": [
                 {"name": r.name, "status": r.status, "detail": r.detail, "data": r.data} for r in self.results
@@ -242,7 +242,7 @@ def check_notifier(config: Config, *, probe: bool, hub: NotifyHub) -> CheckResul
     kinds = ",".join(a.name for a in hub.adapters)
     if not probe:
         return CheckResult("通知适配器", PASS, "已装配：%s（加 --notify-test 可实发测试消息）" % kinds)
-    results = hub.notify("SYSTEM", "自检消息：如果你看到这条，说明告警链路是通的。", {"source": "main.py -t"})
+    results = hub.notify("SYSTEM", "自检消息：如果你看到这条，说明告警链路是通的。", {"source": "app.py -t"})
     detail = "已装配：%s；发送结果：%s" % (kinds, json.dumps(results, ensure_ascii=False))
     bad = {k: v for k, v in results.items() if not v.get("ok") and not v.get("skipped")}
     status = WARN if bad else PASS
@@ -391,7 +391,7 @@ def render(report: SelfCheckReport, *, color: Optional[bool] = None) -> str:
     if color is None:
         color = sys.stdout.isatty() and os.environ.get("NO_COLOR") is None
     lines: List[str] = []
-    lines.append("py12306 自检 (railkit %s)" % __version__)
+    lines.append("py12306 自检 (core %s)" % __version__)
     lines.append("=" * 72)
     for item in report.results:
         if color:

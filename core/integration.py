@@ -1,4 +1,4 @@
-"""把 railkit 的风控熔断 / 自适应抖动接进上游 py12306 的查询循环。
+"""把 core 的风控熔断 / 自适应抖动接进上游 py12306 的查询循环。
 
 为什么用「打补丁」而不是改 job.py：
 - 上游 query/job.py 里还混着下单、乘客校验、CDN 开关等逻辑，直接改容易伤到业务；
@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 
 
 class IntegrationConfig:
-    """集成层自己的配置（与 railkit.config.Config 解耦，便于单测）。"""
+    """集成层自己的配置（与 core.config.Config 解耦，便于单测）。"""
 
     def __init__(
         self,
@@ -410,7 +410,7 @@ class QueryLoopIntegration:
         Job.get_results = patched_get_results
         Job.handle_response = patched_handle_response
         self.patched = True
-        logger.info("已接入 railkit 风控熔断与自适应抖动（safe_stay/get_results/handle_response）")
+        logger.info("已接入 core 风控熔断与自适应抖动（safe_stay/get_results/handle_response）")
         return True
 
 

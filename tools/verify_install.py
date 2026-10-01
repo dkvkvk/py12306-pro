@@ -16,16 +16,16 @@ for info in pkgutil.walk_packages([str(ROOT / "py12306")], prefix="py12306."):
     modules.append(info.name)
 modules += ["main", "upstream_entry", "settings"]
 try:
-    import railkit
-    for info in pkgutil.iter_modules(railkit.__path__):
-        modules.append("railkit." + info.name)
+    import core
+    for info in pkgutil.iter_modules(core.__path__):
+        modules.append("core." + info.name)
 except Exception as exc:
-    print("railkit 导入失败:", exc)
+    print("core 导入失败:", exc)
 
 ok, failed = [], []
 for name in sorted(set(modules)):
     if name == "main":
-        # main.py 只做入口，import 会执行 railkit.cli（无副作用），可以导入
+        # main.py 只做入口，import 会执行 core.cli（无副作用），可以导入
         pass
     try:
         importlib.import_module(name)

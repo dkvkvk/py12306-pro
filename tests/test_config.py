@@ -10,7 +10,7 @@ import logging
 
 import pytest
 
-from railkit.config import (
+from core.config import (
     Config,
     ConfigError,
     HARD_MIN_QUERY_INTERVAL,

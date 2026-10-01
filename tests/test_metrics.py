@@ -6,7 +6,7 @@ import time
 
 import pytest
 
-from railkit.metrics import MetricsStore, OUTCOME_TYPES, percentile
+from core.metrics import MetricsStore, OUTCOME_TYPES, percentile
 
 
 class FakeClock:

@@ -86,20 +86,20 @@ def _guard() -> Any:
 
 
 def _store():
-    from railkit.metrics import get_store
+    from core.metrics import get_store
 
     return get_store()
 
 
 def _integration():
-    from railkit.integration import get_integration
+    from core.integration import get_integration
 
     return get_integration()
 
 
-def _railkit_config():
+def _core_config():
     try:
-        from railkit.config import load_config
+        from core.config import load_config
 
         return load_config()
     except Exception:
@@ -149,7 +149,7 @@ def _redis_health(timeout: float = 2.0) -> Dict[str, Any]:
     except Exception:
         url = ""
     if not url:
-        cfg = _railkit_config()
+        cfg = _core_config()
         url = cfg.redis.url.reveal() if (cfg and cfg.redis) else ""
     if not url:
         return {"configured": False, "ok": False, "detail": "未配置 Redis"}
@@ -226,11 +226,11 @@ def _read_exact(sock, size):
 
 
 def _login_states() -> List[Dict[str, Any]]:
-    config = _railkit_config()
+    config = _core_config()
     if config is None:
         return []
     try:
-        from railkit.runtime_state import LoginStateStore
+        from core.runtime_state import LoginStateStore
 
         store = LoginStateStore.from_config(config)
         return store.audit()
@@ -286,7 +286,7 @@ def api_overview():
         return denied
     store = _store()
     integration = _integration()
-    config = _railkit_config()
+    config = _core_config()
     risk_notice = (
         "本工具违反 12306 服务条款，使用即承担账号被封、订单被取消的风险；"
         "12306 风控会识别高频请求，做了退避也无法保证不被封。官方候补是更稳妥的选择。"
@@ -393,10 +393,10 @@ def api_purge_login_state():
     denied = _guard()
     if denied is not None:
         return denied
-    config = _railkit_config()
+    config = _core_config()
     if config is None:
         return jsonify({"ok": False, "error": "config_invalid"}), 409
-    from railkit.runtime_state import LoginStateStore
+    from core.runtime_state import LoginStateStore
 
     store = LoginStateStore.from_config(config)
     removed = [str(p) for p in store.purge()]

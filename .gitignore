@@ -3,6 +3,7 @@
 .env.*
 !.env.example
 env.py
+env.docker.py
 runtime/
 data/
 logs/
@@ -18,5 +19,13 @@ venv/
 .pytest-tmp/
 *.egg-info/
 report.json
-rep.json
+req_report.json
 query.log
+
+# 本地产物
+.gui-shot/
+.venv-gui/
+wheels/
+build/
+dist/
+*.spec.bak

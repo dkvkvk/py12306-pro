@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from railkit.notifier import (
+from core.notifier import (
     Adapter,
     BarkAdapter,
     ConsoleAdapter,
@@ -22,7 +22,7 @@ from railkit.notifier import (
     WebhookAdapter,
     make_notifier,
 )
-from railkit.runtime_state import (
+from core.runtime_state import (
     LoginStateStore,
     StateEncryptionUnavailable,
     decrypt_bytes,
@@ -203,7 +203,7 @@ class TestLoginStateStore:
         assert entry["name"] == "acct"
 
     def test_from_config_uses_config_key(self, base_env, tmp_path):
-        from railkit.config import build_config
+        from core.config import build_config
 
         config = build_config(base_env, base_dir=tmp_path)
         store = LoginStateStore.from_config(config)

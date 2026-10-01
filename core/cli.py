@@ -1,9 +1,9 @@
-"""统一入口引导：环境变量 -> 上游 Config 桥接、railkit 装配、命令分发。
+"""统一入口引导：环境变量 -> 上游 Config 桥接、core 装配、命令分发。
 
 三个命令：
-    python main.py -t / --test        启动自检（不查票），退出码 0/1
-    python main.py serve [--port N]   单独启动可视化面板
-    python main.py --purge-login-state 清除登录态
+    python app.py -t / --test        启动自检（不查票），退出码 0/1
+    python app.py serve [--port N]   单独启动可视化面板
+    python app.py --purge-login-state 清除登录态
 
 设计要点：上游 Config 用 EnvLoader.exec(env.py) 取配置，我们在它读取之后做一次
 「环境变量覆盖」，键名沿用上游的（USER_ACCOUNTS / QUERY_JOBS / DINGTALK_WEBHOOK ...），
@@ -127,7 +127,7 @@ def patch_env_loader() -> None:
     """让上游 Config 初始化完成后立刻叠加环境变量。"""
     from py12306.config import Config as UpstreamConfig
 
-    if getattr(UpstreamConfig, "_railkit_bridge_patched", False):
+    if getattr(UpstreamConfig, "_core_bridge_patched", False):
         return
     original_init = UpstreamConfig.__init__
 
@@ -141,10 +141,10 @@ def patch_env_loader() -> None:
             logger.info("没有环境变量需要覆盖上游配置（继续使用 env.py）")
 
     UpstreamConfig.__init__ = patched_init
-    UpstreamConfig._railkit_bridge_patched = True
+    UpstreamConfig._core_bridge_patched = True
 
 
-# --- railkit 装配 ---------------------------------------------------------
+# --- core 装配 ---------------------------------------------------------
 
 
 def build_integration_config(config: Any):
@@ -168,9 +168,9 @@ def build_integration_config(config: Any):
 
 
 def setup(base_dir: Optional[Path] = None, *, patch_query_loop: bool = True):
-    """初始化 railkit：加载 .env、校验配置、装脱敏、建指标库、接查询循环。
+    """初始化 core：加载 .env、校验配置、装脱敏、建指标库、接查询循环。
 
-    返回 (railkit_config, integration)。
+    返回 (core_config, integration)。
     """
     from .config import ConfigError, build_config
     from .metrics import MetricsStore, set_store
@@ -236,7 +236,7 @@ def start_breaker_sync(integration: Any, interval: float = 2.0) -> Any:
                 logger.debug("同步熔断器快照失败", exc_info=True)
             time.sleep(interval)
 
-    thread = threading.Thread(target=loop, name="railkit-breaker-sync", daemon=True)
+    thread = threading.Thread(target=loop, name="core-breaker-sync", daemon=True)
     thread.start()
     return thread
 
@@ -255,7 +255,7 @@ def setup_logging(config: Any) -> None:
 def cmd_selfcheck(argv: List[str]) -> int:
     from .selfcheck import render, run
 
-    parser = argparse.ArgumentParser(prog="main.py -t", add_help=False)
+    parser = argparse.ArgumentParser(prog="app.py -t", add_help=False)
     parser.add_argument("--offline", action="store_true")
     parser.add_argument("--notify-test", action="store_true")
     parser.add_argument("--json", dest="as_json", action="store_true")
@@ -296,11 +296,11 @@ def cmd_waitlist(argv: List[str]) -> int:
     """候补模式：走 12306 官方候补渠道（spec 第 6 条）。
 
     用法：
-        python main.py waitlist              按 WAITLIST_JSON 提交并轮询
-        python main.py waitlist --simulate   离线演练：不碰网络，用模拟后端跑完整状态机
-        python main.py waitlist --dry-run    只打印将要提交的表单，不发送
+        python app.py waitlist              按 WAITLIST_JSON 提交并轮询
+        python app.py waitlist --simulate   离线演练：不碰网络，用模拟后端跑完整状态机
+        python app.py waitlist --dry-run    只打印将要提交的表单，不发送
     """
-    parser = argparse.ArgumentParser(prog="main.py waitlist")
+    parser = argparse.ArgumentParser(prog="app.py waitlist")
     parser.add_argument("--simulate", action="store_true", help="用模拟后端离线跑通状态机")
     parser.add_argument("--dry-run", action="store_true", help="只打印表单，不提交")
     parser.add_argument("--max-checks", type=int, default=None)
@@ -329,7 +329,7 @@ def cmd_waitlist(argv: List[str]) -> int:
     if request is None:
         print(
             "没有配置候补申请：请在 .env 里设置 WAITLIST_JSON（格式见 .env.example）。\n"
-            "想先看流程可以执行：python main.py waitlist --simulate",
+            "想先看流程可以执行：python app.py waitlist --simulate",
             file=sys.stderr,
         )
         return 2
@@ -434,7 +434,7 @@ def _sync_waitlist_metrics(store, key: str, status) -> None:
 
 def cmd_serve(argv: List[str]) -> int:
     """单独启动面板（不查票）。"""
-    parser = argparse.ArgumentParser(prog="main.py serve")
+    parser = argparse.ArgumentParser(prog="app.py serve")
     parser.add_argument("--host", default=None)
     parser.add_argument("--port", type=int, default=None)
     parser.add_argument("--debug", action="store_true")
@@ -452,7 +452,7 @@ def cmd_serve(argv: List[str]) -> int:
 
     from flask import Flask
 
-    from py12306.panel.view import panel
+    from webpanel.view import panel
 
     app = Flask("py12306-panel")
     app.register_blueprint(panel)
@@ -468,13 +468,13 @@ def cmd_serve(argv: List[str]) -> int:
 USAGE = """py12306-pro
 
 用法：
-    python main.py -t | --test        启动自检（不查票，退出码 0/1）
-    python main.py                    上游正常抢票流程（自带面板与风控）
-    python main.py serve [--port N]   只启动可视化面板
-    python main.py waitlist           候补模式（官方渠道，按 WAITLIST_JSON）
-    python main.py waitlist --simulate 离线演练候补状态机与告警
-    python main.py --purge-login-state 清除登录态
-    python main.py --version
+    python app.py -t | --test        启动自检（不查票，退出码 0/1）
+    python app.py                    上游正常抢票流程（自带面板与风控）
+    python app.py serve [--port N]   只启动可视化面板
+    python app.py waitlist           候补模式（官方渠道，按 WAITLIST_JSON）
+    python app.py waitlist --simulate 离线演练候补状态机与告警
+    python app.py --purge-login-state 清除登录态
+    python app.py --version
 
 风险提示：本工具违反 12306 服务条款，使用即承担账号被封、订单被取消的风险；
           官方候补是更稳妥的选择，应优先使用。
@@ -482,7 +482,7 @@ USAGE = """py12306-pro
 
 
 def run_upstream(argv: List[str]) -> int:
-    """走上游 main.py 的抢票流程，但先完成 railkit 装配。"""
+    """走上游 main.py 的抢票流程，但先完成 core 装配。"""
     force_utf8_console()
     try:
         config, integration, _policy = setup(patch_query_loop=True)
@@ -505,7 +505,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     if "--version" in argv:
         from . import __version__
 
-        print("py12306-pro (railkit %s)" % __version__)
+        print("py12306-pro (core %s)" % __version__)
         return 0
     if "--purge-login-state" in argv:
         return cmd_purge_login_state(argv)

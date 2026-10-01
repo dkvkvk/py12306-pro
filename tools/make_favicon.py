@@ -2,7 +2,7 @@
 """生成面板图标（纯标准库手写 PNG 编码器，不引入 Pillow、不提交二进制资源）。
 
 设计：深色圆角底 + 绿色信号点 + 白色车头轮廓，风格与面板深色主题一致。
-用法：python tools/make_favicon.py  ->  py12306/panel/ui/favicon.png
+用法：python tools/make_favicon.py  ->  webpanel/ui/favicon.png
 """
 
 from __future__ import annotations

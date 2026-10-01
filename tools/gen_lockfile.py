@@ -9,12 +9,15 @@ from __future__ import annotations
 
 import json
 import sys
+import time
 import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 REPORT = ROOT / "req_report.json"
 TARGET = ROOT / "requirements-lock.txt"
+#: 终端用户直接 pip install 用的清单：与锁文件同版本，但**只放可从 wheel 安装的包**
+USER_TARGET = ROOT / "requirements.txt"
 
 HEADER = """# 精确锁定的依赖清单（requirements-lock.txt）
 #
@@ -35,17 +38,65 @@ SDIST_ONLY = {
 }
 
 
+#: 网络不稳时重试次数（PyPI 偶发 SSL EOF）
+_FETCH_RETRIES = 4
+
+
+def _fetch_json(url: str) -> dict:
+    last: Exception | None = None
+    for attempt in range(1, _FETCH_RETRIES + 1):
+        try:
+            request = urllib.request.Request(url, headers={"User-Agent": "py12306-lockfile/1.0"})
+            with urllib.request.urlopen(request, timeout=60) as response:
+                return json.load(response)
+        except Exception as exc:  # noqa: BLE001 - 网络类异常统一重试
+            last = exc
+            time.sleep(1.5 * attempt)
+    raise RuntimeError("拉取 %s 失败：%s" % (url, last))
+
+
 def wheel_ok(name: str, version: str) -> tuple[bool, str]:
     url = "https://pypi.org/pypi/%s/%s/json" % (name, version)
-    with urllib.request.urlopen(url, timeout=60) as response:
-        payload = json.load(response)
+    payload = _fetch_json(url)
     files = [item["filename"] for item in payload.get("urls", [])]
     for filename in files:
+        if not filename.endswith(".whl"):
+            continue
         if filename.endswith("py2.py3-none-any.whl") or filename.endswith("py3-none-any.whl"):
             return True, filename
-        if "cp311" in filename and ("manylinux" in filename or "musllinux" in filename):
+        # abi3 稳定 ABI：cp39/cp310-abi3 的 wheel 在更高版本 Python 上同样可用
+        # （PySide6 就是这种），不能只认 cp311
+        if "abi3" in filename or "cp311" in filename:
             return True, filename
     return False, (files[0] if files else "无任何发行文件")
+
+
+USER_HEADER = """# 运行本程序所需的依赖（终端用户直接用这个文件安装）
+#
+#   pip install -r requirements.txt
+#
+# 版本与 requirements-lock.txt 一致，但去掉了只有源码包（sdist）的项，
+# 保证在 Windows 上不需要 C 编译器也能装好。
+# 想完全复现开发环境请用 requirements-lock.txt。
+"""
+
+#: 只有 sdist、但不影响主流程的包（装不上也不阻塞桌面程序）
+OPTIONAL_SDIST = {"pyppeteer-box": "验证码平台的第三方 fork，只有源码包；不装也能跑（用免费打码）"}
+
+
+def _write_user_requirements(rows: list[tuple[str, str]]) -> None:
+    lines = [USER_HEADER.rstrip(), ""]
+    for name, version in rows:
+        if name in OPTIONAL_SDIST:
+            continue
+        lines.append("%s==%s" % (name, version))
+    lines.append("")
+    for name, comment in OPTIONAL_SDIST.items():
+        lines.append("# %s：" % name)
+        lines.append("#   %s" % comment)
+        lines.append("#   需要时单独装：pip install %s" % name)
+    USER_TARGET.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    print("已写入 %s：%d 个包（面向使用者）" % (USER_TARGET.name, len(rows) - len(OPTIONAL_SDIST)))
 
 
 def main() -> int:
@@ -67,6 +118,7 @@ def main() -> int:
         lines.append("%s==0.0.27" % name)
 
     TARGET.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    _write_user_requirements(rows)
     print("已写入 %s：%d 个包" % (TARGET.name, len(rows) + len(SDIST_ONLY)))
     for name, version, detail in problems:
         print("  注意：%s==%s 无 3.11 wheel -> %s" % (name, version, detail))

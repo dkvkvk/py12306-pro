@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from railkit.config import in_period, parse_periods, to_minutes
-from railkit.timing import (
+from core.config import in_period, parse_periods, to_minutes
+from core.timing import (
     DeterministicJitter,
     QueryTimingConfig,
     SystemJitter,

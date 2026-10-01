@@ -36,7 +36,7 @@ DIST_ALIASES = {
     "cryptography": "cryptography",
 }
 
-LOCAL_PREFIXES = ("py12306", "railkit")
+LOCAL_PREFIXES = ("py12306", "core")
 
 files = sorted(list(ROOT.glob("py12306/**/*.py")) + [ROOT / "main.py", ROOT / "upstream_entry.py", ROOT / "settings.py"])
 found: dict[str, set[str]] = {}

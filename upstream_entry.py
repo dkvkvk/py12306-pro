@@ -1,6 +1,6 @@
-"""上游抢票入口（原 main.py 的内容，仅重命名以便 railkit.cli 接管命令行）。
+"""上游抢票入口（原 main.py 的内容，仅重命名以便 core.cli 接管命令行）。
 
-保持原样，不要在这里加 railkit 的逻辑：装配动作在 railkit/cli.py:setup() 里，
+保持原样，不要在这里加 core 的逻辑：装配动作在 core/cli.py:setup() 里，
 这样「上游业务代码」和「生产化改造层」边界清晰、可分别测试。
 """
 

@@ -1,334 +1,186 @@
-# py12306-pro
+# py12306 抢票助手（桌面版）
 
 > ⚠️ **风险提示（必读）**
 > - 本工具**违反 12306 服务条款**，使用即承担**账号被封、订单被取消**的风险。
 > - 12306 风控会识别高频请求；**即使做了指数退避和熔断，也无法保证不被封**。
-> - 账号密码与实名信息由使用者自行提供；本工具不存储明文（登录态加密落盘、日志全局脱敏）。
-> - **官方候补功能是更稳妥、且合规的选择**。本仓库的候补模式走的就是官方渠道，优先于脚本硬抢。
+> - **官方候补功能是更稳妥、且合规的选择**，本程序的候补模式走的就是官方渠道，优先于脚本硬抢。
+> - 账号密码由使用者自行提供；本程序不存储明文（登录态加密落盘、日志全局脱敏）。
 > - 本文档不构成法律建议，合规性由使用者自行确认。
 
-在 [pjialin/py12306](https://github.com/pjialin/py12306)（Apache-2.0）基础上做的生产化改造：
-**风控熔断 / 自适应抖动 / 密钥环境变量化 / 日志脱敏 / 登录态加密 / 零构建可视化面板 / 候补模式**。
+一个能直接双击运行的 Windows 桌面程序：界面看板 + 后台抢票引擎 + 可选 Web 面板。
+不需要 Docker、不需要 Redis、不需要额外服务。
 
-![面板总览](tools/panel-screenshot.png)
+![界面截图](tools/gui-screenshot.png)
 
 ---
 
-## 1. 30 秒上手
+## 1. 快速开始（Windows，两步）
 
-### 1.1 Docker Compose（推荐，含 Redis）
-
-```bash
-cp .env.example .env
-# 必填三项：USER_ACCOUNTS_JSON、JWT_SECRET_KEY、RUNTIME_ENC_KEY
-chmod 600 .env
-
-docker compose up -d
-docker compose logs -f py12306
+```text
+1. 双击「安装环境.bat」     —— 自动创建 .venv 并安装依赖（只需一次）
+2. 双击「启动py12306.bat」  —— 打开程序窗口
 ```
 
-起来之后：
+第一次启动后：把 `.env`（参考 `.env.example`）放到**数据目录**（默认 `文档\py12306`，
+程序「设置」页会显示具体路径），填好账号与任务，再点「开始抢票」。
 
-| 地址 | 说明 |
+没有界面/不想用界面时，同一个 `app.py` 也支持命令行：
+
+```bash
+python app.py                 # 启动桌面窗口（默认）
+python app.py -t              # 自检，退出码 0/1，结果写到 数据目录/logs/selfcheck.txt
+python app.py serve           # 只启动 Web 面板
+python app.py waitlist        # 候补模式
+python app.py -h              # 全部参数
+```
+
+---
+
+## 2. 代码架构
+
+参照 `host_app` 的分层：**薄入口 + core（无界面业务层）+ ui（Qt 界面）+ packaging（打包）**。
+core 里没有任何 Qt/Flask 依赖，所以它能被单独测试、也能被命令行直接复用。
+
+```text
+app.py                     程序入口（98 行级薄壳）
+                            · 参数分发（GUI / -t / serve / waitlist）
+                            · 崩溃处理器：写 数据目录/logs/崩溃日志_*.txt + 弹窗
+                            · --selfcheck：起来后自动退出，供无人值守验证
+core/                      业务层（不 import Qt / Flask）
+  paths.py                 数据目录管理（文档\py12306，可用 PY12306_DATA_DIR 覆盖）
+  version.py               APP_NAME / __version__ 单一来源
+  logging_setup.py         日志初始化（轮转 + 脱敏 + 崩溃日志）
+  settings.py              界面可改的设置（settings.json 落盘，含密钥的一律不写）
+  config.py                .env 读取与启动校验（字段错就报错，静默失效是大忌）
+  uplink.py                上游桥接：账号/任务推给 py12306，状态取回给界面
+  engine.py                抢票引擎（后台线程，可安全停止）
+  monitor.py               状态门面：把指标整理成界面要用的 Snapshot
+  metrics.py               指标库（内存窗口 + SQLite，重启回载）
+  risk.py                  风控熔断器（CLOSED→BACKOFF→OPEN→HALF_OPEN）
+  timing.py                抖动 / 退化纯函数
+  integration.py           把熔断与抖动接进上游查询循环
+  notifier.py              统一告警接口 + 适配器（钉钉/ServerChan/Bark/webhook/console）
+  redaction.py             日志脱敏
+  runtime_state.py         登录态 AES-GCM 加密落盘 + 一键清除
+  waitlist.py              候补模式（官方渠道）
+  selfcheck.py             自检
+  cli.py                   命令行分发
+ui/                        Qt 界面（只读 core，不直接碰上游对象）
+  theme.py                 深色主题 + 字体探测
+  dashboard_widgets.py     状态卡 / 曲线图 / 任务表 / 事件表
+  main_window.py           主窗口：运行看板 / 风控事件 / 设置
+  panel_thread.py          在后台线程里起 Web 面板
+webpanel/                  可选 Web 面板（Flask 蓝图，零构建前端）
+py12306/                   上游业务代码（登录、下单、乘客、CDN），只做必要的兼容修补
+packaging/                 PyInstaller 配置 + 图标生成 + 安装包脚本
+tests/                     397 个用例（pytest 或 tests/run_all.py 都能跑）
+tools/                     截图、仿真数据、锁文件生成、依赖对账等开发脚本
+```
+
+### 线程模型
+
+```text
+UI 线程 ──QTimer 1 秒──▶ core.monitor ──读──▶ core.metrics（内存窗口 + SQLite）
+   │                                              ▲
+   └──开始/停止──▶ core.engine（后台线程）──写──────┘
+                        │
+                        └─▶ 上游 py12306 查询循环（已接入熔断与自适应抖动）
+```
+
+界面永远不会被网络或抢票速度拖住：所有耗时动作都在引擎线程里，界面只读快照。
+
+### 与上游的关系
+
+- 上游业务逻辑完整保留（登录、下单、乘客、CDN、集群代码都在）。
+- 对上游的修补只有四处，且都有回归测试：
+  1. `@jwt_required` → `@jwt_required()`（Flask-JWT-Extended 4.x 要求调用）；
+  2. 受保护路由补显式 `endpoint=`（4.x 不再保留 `__name__`，否则 Web 界面起不来）；
+  3. `Web.__init__` 注册蓝图改为幂等（重建实例不再抛 endpoint 冲突）；
+  4. `get_file_modify_time` 对不存在的配置文件返回 0（纯 `.env` 部署时不再崩）。
+- 其余全是新增层。上游原本的 `main.py` 保留为 `upstream_entry.py`。
+
+---
+
+## 3. 界面说明
+
+| 标签页 | 内容 |
 |---|---|
-| http://127.0.0.1:8010/panel/ | **可视化面板**（指标、时序、逐任务熔断状态、风控告警、实时日志） |
-| http://127.0.0.1:8008/ | 上游自带 Web 界面（保留原样） |
-| http://127.0.0.1:8010/panel/api/metrics.prom | Prometheus 文本指标 |
+| **运行看板** | 8 张指标卡（每分钟查询、累计查询、有票/成功、风控命中、延迟 p50/p90、熔断中任务、基础间隔、运行时长）；查询量/风控/有票分桶柱状图；延迟 p50/p90 折线；任务组合表（熔断状态、连续失败、下次探针、有票率、最近原因） |
+| **风控事件** | 退避与熔断事件表（分类/状态/等待秒数/原因）+ 实时日志（读上游日志文件，自动滚动） |
+| **设置** | 查询节奏、风控阈值、告警渠道、Web 面板、维护时段开关、登录态清除、环境信息 |
 
-自检：
+工具栏：开始抢票 / 停止 / 解除全部熔断 / 自检 / 启动 Web 面板 / 打开日志目录。
+
+**熔断粒度是「任务 × 日期 × 车站」**：撞墙的往往只是一个组合，全局熔断会误伤其它正常组合。
+
+### Web 面板（可选）
+
+点工具栏「启动 Web 面板」，浏览器会打开 `http://127.0.0.1:8010/panel/`。
+默认只允许本机；要局域网访问需 `PANEL_ALLOW_REMOTE=1`，建议同时设 `PANEL_TOKEN`。
+面板与桌面看板读的是**同一份指标库**，两处数据一致。
+
+---
+
+## 4. 目录与数据
+
+程序目录只放代码；**所有用户数据都在数据目录**（默认 `文档\py12306`）：
+
+```text
+文档\py12306\
+  .env              账号、任务、密钥（自己创建，程序不写）
+  settings.json     界面设置（不含密钥）
+  logs\             py12306.log、12306.log、崩溃日志、selfcheck.txt
+  metrics\          metrics.sqlite3（指标库，面板与看板共用）
+  runtime\user\     登录态（AES-GCM 加密，0600/ACL 收紧）
+```
+
+要换位置就设 `PY12306_DATA_DIR`（例如 `D:\py12306-data`）。
+
+---
+
+## 5. 打包成 exe
 
 ```bash
-docker compose run --rm py12306 -t          # 启动自检，退出码 0/1，可直接当健康检查
-docker compose run --rm py12306 -t --json   # 机器可读
+.venv\Scripts\pyinstaller packaging\py12306.spec --noconfirm
+# 产物：dist\py12306\py12306.exe
 ```
 
-### 1.2 本地
+图标由 `packaging/make_icon.py` 用标准库生成（不引入 Pillow）。
+打包后仍支持 `--selfcheck`：无人值守验证 exe 能否正常起来，结果写到
+`数据目录/logs/selfcheck.txt`。
+
+---
+
+## 6. 测试
 
 ```bash
-python -m venv .venv && . .venv/bin/activate     # Windows: .venv\Scripts\activate
-pip install -r requirements-lock.txt
-cp .env.example .env && $EDITOR .env
-
-python main.py -t                # 自检
-python main.py serve --port 8010 # 只启面板（不查票，用于调界面）
-python main.py                   # 上游抢票流程（已接入熔断与抖动）
-python main.py --purge-login-state
+pytest -q --basetemp=.pytest-tmp     # 推荐（397 个用例）
+python tests/run_all.py              # 零依赖方式，不装 pytest 也能跑
 ```
 
-没有真实账号想先看面板长什么样：
+全部离线：不联网、不连 Redis、不 sleep。界面测试用 `QT_QPA_PLATFORM=offscreen`，
+没有 PySide6 的环境会自动跳过。
 
-```bash
-python tools/seed_demo.py --minutes 20    # 灌入仿真指标（不联网、不碰账号）
-python main.py serve --port 8010
-```
+覆盖范围：风控分类与熔断状态机、抖动与退避、逐组合独立抖动、日志脱敏（含误伤防护）、
+配置校验（字段写错即报错）、登录态加解密与清除、指标库与重启回载、候补状态机、
+上游模块逐个 import、上游 Web 路由与 JWT 端到端、桌面窗口搭建与刷新、设置存取与收敛。
 
 ---
 
-## 2. 可视化面板
+## 7. 已知限制
 
-零构建：单个 HTML + 原生 JS + 手写 SVG 图表，**不依赖任何 CDN**（内网/离线可用），
-不引入 Node 构建链。图标由 `tools/make_favicon.py` 用标准库手写 PNG 生成。
-
-| 区块 | 内容 |
-|---|---|
-| 顶部状态灯 | 接口 / Redis（带延迟）/ 熔断任务数 / 告警适配器健康度 |
-| 指标卡 | 查询每分钟、累计查询、有票+成功、风控命中、延迟 p50/p90/p99/max、熔断中任务、基础间隔与抖动、熔断上限 |
-| 查询节流图 | 按桶的查询次数 / 风控命中 / 有票 / 熔断触发（柱子叠加） |
-| 延迟图 | p50 与 p90 折线 |
-| 任务卡 | **每个「任务 × 日期 × 车站」组合**的熔断状态、连续失败次数、下次探针倒计时、最近延迟、软风控分、最近原因、一键解除熔断 |
-| 风控事件表 | 最近的熔断 / 退避 / 恢复记录（分类、状态、等待秒数、原因） |
-| 告警链路 | 适配器列表与失败冷却状态、最近发送结果、可直接发测试告警、一键清除登录态 |
-| 实时日志 | SSE 增量推送（自动降级为轮询），风控行红色高亮 |
-
-### 面板安全（spec 第 7 条）
-
-- **默认只允许本机**（127.0.0.1 / ::1）访问 `/panel` 与 `/panel/api/*`。
-- 容器/远程场景需显式 `PANEL_ALLOW_REMOTE=1`；建议同时设置 `PANEL_TOKEN`，
-  通过 `X-Panel-Token` 头或 `?token=` 传入。
-- 面板**不返回任何密钥**：配置走 `Config.scrub()`，告警消息再过一遍脱敏。
-- 上游 Web 界面硬编码的 JWT 密钥 `'secret'` 已移除，改为必须来自 `JWT_SECRET_KEY`，
-  缺失时拒绝启动（`DEV_MODE=1` 才用临时随机密钥）。
+- **候补端点未经实测**：12306 候补接口无公开文档，路径集中在
+  `core/waitlist.py: DEFAULT_ENDPOINTS`，可用 `WAITLIST_*_URL` 覆盖。
+  状态解析刻意保守：识别不出来报 ERROR，绝不猜成成功。
+- **没有实盘验证过抢票**：本机无法登录真实 12306，所以下单链路只做了代码级兼容修补与单元测试，
+  第一次真实使用建议先用 `python app.py -t` 自检、再小规模试跑。
+- 打包产物**在本机未验证**（本机没有 PyInstaller 运行环境所需的完整桌面环境，
+  但 spec 里的 datas/hiddenimports 已按本仓库实际路径写好）。
+- 上游若在 12306 接口变更后失效，本程序的风控/指标层仍可用，但查询会拿不到结果。
 
 ---
 
-## 3. 风控熔断与查询节流（核心）
+## 8. 致谢与许可
 
-### 3.1 状态机
-
-```
-CLOSED ──连续 N 次 5xx/超时──▶ BACKOFF ──等待结束──▶ CLOSED
-   │                              （3s→6s→12s…封顶 120s，带抖动）
-   └──命中风控特征──────────────▶ OPEN ──冷却结束──▶ HALF_OPEN ──探针成功──▶ CLOSED
-                                   │   （30s→60s…封顶 30min）        │
-                                   └──────────探针失败────────────────┘
-```
-
-粒度是 **「任务 × 日期 × 车站」**：撞墙的往往只是一个组合，全局熔断会误伤其他正常组合。
-
-### 3.2 真的接进了查询循环
-
-`railkit/integration.py` 对上游 `Job@@ 打补丁（不改上游业务代码，可读可测可撤）：
-
-| 补丁点 | 作用 |
-|---|---|
-| `Job.safe_stay` | 换成「熔断决策 + 逐组合抖动」；**熔断中直接不发请求**，只等待 |
-| `Job.get_results` | 无论成功还是被 `Request.request()` 吞成空响应，都记一次指标 |
-| `Job.handle_response` | 拿到余票结果后记「有票」并让熔断器学习 |
-
-### 3.3 风控特征识别
-
-`classify_response(status, headers, body)` 是纯函数：
-
-| 输入 | 判定 |
-|---|---|
-| 5xx | `server` → 计入连续异常，退避 |
-| 超时 / 连接失败 / TLS 错误 | `transport` → 同上 |
-| 401 / 302 | `auth` → **不计入熔断**（该重新登录，撞墙没用），但立刻告警 |
-| 403 / 429 | `rate_limit` → 立即熔断 |
-| **HTTP 200 + 正文含「您的访问过于频繁」等** | `risk_control` → 立即熔断（12306 最常见的形态） |
-| 响应头 `X-Risk-Control` / `X-Captcha-Challenge` | `risk_control` |
-| `Retry-After` | 熔断等待取 `max(指数退避, Retry-After)`，受 `max_wait_seconds` 约束 |
-
-### 3.4 逐组合独立抖动
-
-```python
-stream = new_stream("G1234 北京->上海|2026-10-01|北京-上海")   # 由 key 派生确定性随机流
-delay = next_query_delay(timing, pre_sale=False, stream=stream, override=4.0)
-```
-
-同一个组合可复现，不同组合互不相关。**抖动流按 key 长期持有**——每次重建随机流会让首个随机数恒定，
-看起来像没有抖动（这个坑有单测锁住）。
-
-### 3.5 调参环境变量
-
-`QUERY_INTERVAL`（基础间隔，默认 4s）、`RISK_FAILURE_THRESHOLD`、
-`RISK_BREAKER_BASE` / `RISK_BREAKER_CAP` / `RISK_BREAKER_MULTIPLIER`、
-`RISK_SOFT_THRESHOLD`、`RISK_JITTER_RATIO`、`MAX_STATION_PAIRS`（默认 5，防查询量爆炸）。
-
----
-
-## 4. 候补购票模式
-
-走 12306 官方候补渠道：合规性远好于脚本硬抢，成功率通常也更高。
-
-```bash
-# .env 里配置一条候补申请
-WAITLIST_JSON={"left_date":"2026-10-01","left_station":"北京","arrive_station":"上海",
-  "train_numbers":["G1","G3"],"seat_types":["O"],"accept_no_seat":true,
-  "passengers":[{"passenger_name":"张三","passenger_id_no":"110101...","passenger_id_type_code":"1","passenger_type":"1"}]}
-
-# 三种用法
-python main.py waitlist --dry-run     # 只打印将要提交的表单与端点，不发请求
-python main.py waitlist --simulate    # 离线演练：模拟后端跑通状态机 + 告警（不碰网络）
-python main.py waitlist               # 真实提交并轮询；兑现/失败/取消都会告警
-python main.py waitlist --once        # 只查一次状态
-```
-
-`--simulate` 是给"先看看会发生什么"用的：它构造 `SimulatedBackend`，
-把 `sleeper` 换成空函数（不真的等 90 秒），最多查 6 次，
-同时把候补状态写进指标库 —— 所以**跑完之后面板的任务列表里会出现这条候补**。
-
-- 状态机：`pending_submit → queued → fulfilled / failed / expired / canceled`，
-  **只在状态真的变化时告警**，不会每分钟一条噪音。
-- 轮询退避：90s 起步、指数放大、30min 封顶、带抖动；到上限会告警而不是无限跑。
-- 兑现成功 / 未兑现 / 取消都会推对应事件（`TICKET_SUCCESS` / `TICKET_ALL_FAILED` / `SYSTEM`）。
-
-> **端点需要你自己核实一次**
-> 12306 的候补接口没有公开文档，路径会变。本项目把端点集中在
-> `railkit/waitlist.py: DEFAULT_ENDPOINTS`，且**未经实测**。首次使用前请对着抓包核对，
-> 用 `WAITLIST_SUBMIT_URL` / `WAITLIST_QUERY_URL` / `WAITLIST_CANCEL_URL` 覆盖。
-> 状态解析刻意保守：**识别不出来时报 ERROR 而不是猜成成功**，避免「假兑现」告警。
-> 离线验证整条链路用 `SimulatedBackend`（测试里跑的就是它）。
-
----
-
-## 5. 环境现代化与依赖
-
-| 项 | 改造前 | 改造后 |
-|---|---|---|
-| 基础镜像 | `python:3.6.6-slim`（已 EOL） | `python:3.11-slim` |
-| 系统依赖 | 缺字体等 | `libxml2-dev` `libxslt1-dev` `gcc` `fonts-noto-cjk`（缺 CJK 字体验证码识别率暴跌）`ca-certificates` `curl` `tzdata` |
-| 运行用户 | root | 非 root（uid/gid 10001） |
-| pip 源 | 硬编码清华源 | `PIP_INDEX_URL` 构建参数，默认官方源 |
-| 依赖表达 | 一份锁死清单 | 三层：`requirements.in`（区间）/ `requirements-lock.txt`（精确锁）/ `constraints-py311.txt`（3.11 上限+理由） |
-
-锁文件生成方式（已执行，不要手改版本号）：
-
-```bash
-pip install --dry-run --ignore-installed --python-version 3.11 --only-binary=:all: \
-  --report report.json -r requirements.in -c constraints-py311.txt
-```
-
-**已验证**：锁文件里每个版本都在 PyPI 上有 `cp311` 的 manylinux/musllinux wheel 或纯 Python wheel，
-`python:3.11-slim` 上不会触发源码编译（唯一例外 `pyppeteer-box` 只有 sdist，自身无 C 扩展）。
-
-**锁文件是程序化生成的，不要手改**：
-
-```bash
-pip install --dry-run --ignore-installed --python-version 3.11 --only-binary=:all: \
-  --report req_report.json -r requirements.in -c constraints-py311.txt
-python tools/gen_lockfile.py        # 生成锁文件并逐个回查 PyPI 的 wheel
-python tools/audit_imports.py       # 对账：上游真正 import 的包是否都在锁文件里
-python tools/verify_install.py      # 干净环境：按锁文件装完后所有模块能否 import
-```
-
-这三个脚本是补出来的，因为**手工维护锁文件踩了两次坑**：
-
-1. 漏了 `lxml_html_clean`：`lxml>=5` 把 `lxml.html.clean` 拆成独立包，而 `requests-html` 直接
-   import 它 —— 干净环境里 `requests_html` 一导入就 ImportError，上游整个挂掉。
-2. 漏了 `pypng` / `DingtalkChatbot` / `lightpush`：上游 `helpers/qrcode.py` 与
-   `helpers/notification.py` 直接 import。
-
-而且这两个坑**在开发机的 venv 里全都看不出来**（那里恰好有旧版残留），
-只有"干净环境 + 全量 import"才能暴露。`tests/test_boot.py` 就是为此加的：它会把
-上游每一个模块逐个 import，任何一个缺失依赖都会让 CI 先红。
-
-Compose 编排（spec 第 2 节）：Redis `--appendonly yes` + healthcheck + 四个命名卷，
-`py12306` 用 `depends_on: condition: service_healthy` 等 Redis 真就绪，
-**登录态卷（`runtime-data`）与业务数据卷分开挂**。
-
----
-
-## 6. 安全
-
-- **密钥全部环境变量化**：`settings.py` 只留非敏感常量；旧 `env.py` 可用
-  `LOAD_LEGACY_ENV=1` 迁移，且会告警提醒删除。
-- **启动即校验、失败关闭**：字段名写错、区间格式错、JWT 密钥缺失/过短、
-  `WEB_BIND=0.0.0.0` 却没配 IP 白名单、启用 dingtalk 却没给 webhook —— 一次性列出所有问题并拒绝启动。
-- **登录态加密落盘**：AES-GCM（scrypt 派生密钥，遇 OpenSSL 内存上限自动降级 PBKDF2-HMAC-SHA256），
-  原子写 + 0600（Windows 用 icacls 去继承），没配 `RUNTIME_ENC_KEY` 就拒绝明文落盘；
-  `python main.py --purge-login-state` 一键清除。
-- **日志全局脱敏**：挂在 root 与所有 handler 上（只挂 logger 会漏掉 propagate 的日志）。
-  覆盖身份证、手机号（含打码形式）、邮箱、`password`/`token`/`api_key` 赋值、
-  Cookie（保留 cookie 名、值打掉）、长不透明串。
-
----
-
-## 7. 测试
-
-```bash
-pytest -q --basetemp=.pytest-tmp      # 全部离线：不联网、不连 Redis、不 sleep
-```
-
-当前 **374 个用例**，覆盖：
-
-| 文件 | 覆盖 |
-|---|---|
-| `tests/test_timing.py` | 抖动区间、逐组合独立、开售前激进窗、指数退避阶梯、`Retry-After`、跨零点时段 |
-| `tests/test_risk.py` | 响应/异常分类（含 200+风控串）、退避与恢复、熔断立即触发、探针单飞/复归/翻倍、软信号衰减、组合上限、快照字段 |
-| `tests/test_redaction.py` | 各类密钥脱敏、误伤防护、自定义正则、logging Filter |
-| `tests/test_config.py` | 账号解析与报错、字段名写错即报错、时段解析、密钥长度、公网绑定需白名单、`.env` 优先级、旧 `env.py` 迁移 |
-| `tests/test_security.py` | 登录态加解密往返、篡改检测、明文拒绝、一键清除、通知重试与冷却、适配器隔离 |
-| `tests/test_metrics.py` | 采集、分位、时间序列分桶、重启回载、Prometheus 导出与标签转义 |
-| `tests/test_integration.py` | 假 Job/假响应：结果分类、熔断真的阻断查询、抖动真实存在、逐组合独立、组合上限、开售窗 |
-| `tests/test_panel.py` | 访问控制（本机/远程/Token/XFF）、各 API、动作接口、密钥不外泄、零外部 CDN |
-| `tests/test_waitlist.py` | 状态解析保守性、表单构造、离线端到端、退避、去重告警、注入的 sleeper 必须生效 |
-| `tests/test_cli.py` | 入口分发、候补命令三种模式、dry-run 表单、模拟模式离线性与指标落库、环境变量桥接 |
-| `tests/test_boot.py` | 上游 42 个模块逐个 import、路由齐全且无 endpoint 冲突、登录取 token 访问受保护路由 |
-
-时序类测试全部用**假时钟**，不 sleep，跑得快且不 flaky。UI 渲染另有
-`tools/cdp_screenshot.mjs`（用本机 Chrome 的 CDP 截图并回报控制台错误、卡片数、图表元素数）。
-
----
-
-## 8. 目录结构
-
-```
-main.py                     # 统一入口（railkit.cli 分发）
-upstream_entry.py           # 上游抢票流程（原 main.py 内容）
-settings.py                 # 非敏感常量
-railkit/
-  config.py                 # 环境变量配置 + 启动即校验
-  redaction.py              # 日志脱敏
-  notifier.py               # 统一通知接口 + 适配器（钉钉/ServerChan/Bark/webhook/console）
-  timing.py                 # 抖动 / 退避纯函数
-  risk.py                   # 风控分类 + 熔断器
-  metrics.py                # 指标库（内存窗口 + SQLite，可回载）
-  integration.py            # 把熔断/抖动/指标接进上游查询循环
-  runtime_state.py          # 登录态加密落盘
-  waitlist.py               # 候补模式（官方渠道）
-  selfcheck.py              # 自检
-  cli.py                    # 入口引导与环境变量桥接
-py12306/
-  panel/                    # 可视化面板（Flask 蓝图 + 零构建 UI）
-  ...                       # 上游业务代码（仅 web.py 有最小改动：JWT 密钥 + 注册面板蓝图）
-tests/                      # 374 个离线用例
-tools/                      # 仿真指标、CDP 截图、图标生成
-docker-compose.yml          # Redis(appendonly) + py12306，健康检查与卷分离
-```
-
----
-
-## 9. 与上游的关系
-
-- 保留上游全部业务逻辑（登陆、下单、乘客、CDN、集群），上游 Web 界面原样可用。
-- 其余全部是**新增层**（`railkit/`、`py12306/panel/`），可单独测试、可单独摘除。
-- 上游 `docker-compose.yml.example` / `env*.py.example` 保留，便于对照与回退。
-
-### 9.1 对上游的必要修补（都是"照着 spec 升级依赖后被撞出来的"）
-
-规格书列的基线依赖是 `Flask-JWT-Extended==3.15.0`、`Jinja2==2.10` 那一代；上游仓库后来被
-dependabot 升到了 4.x/3.1.x，但**代码没有跟着适配**。撞出来的问题：
-
-| 问题 | 现象 | 修法 |
-|---|---|---|
-| `@jwt_required` 在 4.x 变成装饰器工厂 | 裸用 `@jwt_required` 时请求报 `TypeError: wrapper() missing 1 required positional argument: 'fn'`，所有鉴权接口 500 | 8 处改成 `@jwt_required()`（`tools/fix_jwt_required_calls.py`） |
-| `@jwt_required` 不再保留 `__name__` | 同一蓝图下多个受保护路由的 endpoint 全退化成 `bp.wrapper`，Web 启动即抛 `View function mapping is overwriting an existing endpoint function` —— **上游 Web 界面完全起不来** | 8 个路由补显式 `endpoint=`（`tools/fix_jwt_endpoints.py`） |
-| 硬编码 JWT 密钥 `'secret'` | 管理接口可被伪造 token 访问（spec 第 7 条点名） | 改成必须来自 `JWT_SECRET_KEY`，缺失即拒绝启动 |
-| `Web.__init__` 重复注册蓝图 | Web 被重建（配置变更/单例复位）时抛同样的 endpoint 冲突 | 注册改为幂等 |
-| `Config()` 在配置文件缺失时崩 | `os.path.getmtime` 抛 `FileNotFoundError` —— **纯环境变量部署的容器起不来** | `get_file_modify_time` 对不存在的文件返回 0 |
-
-后两条不是"升级兼容"，是上游本身的健壮性缺陷，但只要用 `.env` 部署就一定会踩到。
-
-`tests/test_boot.py` 把这些都锁住了：逐个 import 上游模块、断言路由齐全且 endpoint 不冲突、
-跑一遍"登录取 token → 访问受保护路由"的端到端链路。
-
----
-
-## 10. 已知限制
-
-- 候补接口路径**未经实测**（见第 4 节），首次使用需按抓包核对。
-- 本机没有 Docker，`docker compose up` 与镜像构建**未在真实 Docker 里跑过**；
-  Dockerfile 的依赖已在干净 venv 中验证可装，compose 文件已用 YAML 解析器校验结构。
-- 面板是"够用"级别：原生 JS + 手写 SVG，没有引入图表库（换来了零构建、离线可用）。
-- `max_station_pairs` 默认 5：多车站组合会成倍放大查询量，超过上限直接拒绝而不是静默截断。
+- 基于 [pjialin/py12306](https://github.com/pjialin/py12306)（Apache-2.0），保留其全部业务代码与 LICENSE。
+- 本仓库的改造部分（core/、ui/、webpanel/、packaging/、tools/）同样以 Apache-2.0 发布。

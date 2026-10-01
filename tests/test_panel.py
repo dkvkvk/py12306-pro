@@ -7,10 +7,10 @@ import json
 import pytest
 from flask import Flask
 
-from railkit.integration import IntegrationConfig, QueryLoopIntegration
-from railkit.metrics import MetricsStore, set_store
-from railkit.notifier import MemoryAdapter, NotifyHub
-from railkit.risk import RiskConfig
+from core.integration import IntegrationConfig, QueryLoopIntegration
+from core.metrics import MetricsStore, set_store
+from core.notifier import MemoryAdapter, NotifyHub
+from core.risk import RiskConfig
 
 
 @pytest.fixture()
@@ -28,11 +28,11 @@ def app(tmp_path, monkeypatch):
         store=store,
         hub=hub,
     )
-    import railkit.integration as integ
+    import core.integration as integ
 
     integ.set_integration(integration)
 
-    from py12306.panel.view import panel
+    from webpanel.view import panel
 
     flask_app = Flask("panel-test")
     flask_app.register_blueprint(panel)
@@ -180,7 +180,7 @@ class TestActions:
         assert "superSecretValue123456" not in memory.messages[-1].body
 
     def test_purge_login_state_reports_count(self, client, app, monkeypatch, tmp_path):
-        # 面板通过 railkit.config 读配置；没有可用配置时应返回 409
+        # 面板通过 core.config 读配置；没有可用配置时应返回 409
         response = client.post("/panel/api/actions/purge-login-state")
         assert response.status_code in (200, 409)
 
