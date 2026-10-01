@@ -440,6 +440,16 @@ def api_logs_stream():
         if path and Path(path).is_file():
             position = Path(path).stat().st_size
         yield "event: hello\ndata: %s\n\n" % json.dumps({"path": path}, ensure_ascii=False)
+        # 先把尾部已有日志补一遍，否则打开页面只能看到「之后的」日志，历史全丢
+        if path and Path(path).is_file():
+            try:
+                with open(path, "r", encoding="utf-8", errors="replace") as handle:
+                    tail = handle.readlines()[-200:]
+                for line in tail:
+                    if line.strip():
+                        yield "data: %s\n\n" % json.dumps({"line": line.rstrip("\n")}, ensure_ascii=False)
+            except OSError:
+                pass
         idle = 0
         while True:
             if not path or not Path(path).is_file():

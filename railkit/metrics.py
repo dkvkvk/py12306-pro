@@ -416,7 +416,9 @@ class MetricsStore:
             out = []
             for state in self._tasks.values():
                 item = state.as_dict()
-                if state.updated_at and item["last_query_ago"] is not None:
+                # 「上次查询距今」是相对量：只要知道最后更新时间就能算，
+                # 不必依赖采集时刻写入的值（重启回载后那个值是过期的）
+                if state.updated_at:
                     item["last_query_ago"] = round(max(0.0, ts - state.updated_at), 1)
                 out.append(item)
             return sorted(out, key=lambda d: d["task"])

@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>py12306 · 风控与查询面板</title>
+<link rel="icon" type="image/png" href="/panel/favicon.png">
 <style>
 :root{
   --bg:#0d1117; --bg-soft:#161b22; --bg-card:#161b22; --line:#21262d; --line-soft:#21262d;
@@ -263,7 +264,10 @@ code{background:#0b0f14;border:1px solid var(--line);border-radius:4px;padding:1
       return '<div class="card '+(it.cls||"")+'"><div class="label">'+esc(it.label)+'</div><div class="value">'
         + esc(it.value)+'</div><div class="foot">'+esc(it.foot||"")+'</div></div>';
     }).join("");
-    $("throttle-hint").textContent = "接入状态：" + (i.patched ? "已接入查询循环（safe_stay/get_results/handle_response）" : "未接入");
+    var hookState = i.patched
+      ? "已接入查询循环（safe_stay / get_results / handle_response）"
+      : (i.installed ? "已装配，但未打补丁（面板独立运行模式，不查票）" : "未装配");
+    $("throttle-hint").textContent = "接入状态：" + hookState;
   }
 
   // ---------- 任务卡 ----------
