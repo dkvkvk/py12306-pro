@@ -1,9 +1,13 @@
-# P0-1 环境现代化：Python 3.6.6-slim -> 3.11-slim
+# py12306-pro :: P0-1 环境现代化
+# 上游是 python:3.6.6-slim（3.6 已 EOL 多年），这里升到 3.11。
 FROM python:3.11-slim
 
-# PYTHONUNBUFFERED: 容器日志实时可见（原来靠 -u 参数，容易漏）
+LABEL org.opencontainers.image.title="py12306-pro" \
+      org.opencontainers.image.description="py12306 生产化改造：风控熔断 / 自适应抖动 / 密钥环境变量化 / 可视化面板" \
+      org.opencontainers.image.source="https://github.com/dkvkvk/py12306-pro"
+
+# PYTHONUNBUFFERED  : 容器日志实时可见（不再依赖 -u）
 # PYTHONDONTWRITEBYTECODE: 只读挂载下不写 .pyc
-# PIP_NO_CACHE_DIR: 镜像里不留 pip 缓存
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
@@ -11,16 +15,13 @@ ENV PYTHONUNBUFFERED=1 \
     LANG=C.UTF-8 \
     TZ=Asia/Shanghai
 
-WORKDIR /app
+WORKDIR /code
 
 # ---- 系统依赖 ----
-# libxml2-dev / libxslt1-dev / gcc: lxml 编译兜底（3.11 通常能拿到 wheel，
-#   但锁文件万一在某架构上回落到 sdist，这里保证还能装得上）
-# ca-certificates: 12306 走 HTTPS
-# fonts-noto-cjk: pyppeteer 渲染中文验证码/页面时必需，缺字体识别率暴跌
-#   （想省 ~250MB 可换成 fonts-wqy-zenhei，只覆盖简体）
-# curl: 容器 HEALTHCHECK 用
-# gosu: 以非 root 运行时的辅助（见下）
+# libxml2-dev/libxslt1-dev/gcc: lxml 万一回落到源码编译也能装
+# fonts-noto-cjk：pyppeteer 渲染中文验证码必需，缺了识别率暴跌（约 +250MB，
+#   想省空间可换 fonts-wqy-zenhei，只覆盖简体）
+# ca-certificates/curl：HTTPS 与健康检查
 RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
@@ -33,36 +34,44 @@ RUN set -eux; \
         fonts-noto-cjk; \
     rm -rf /var/lib/apt/lists/*
 
-# ---- Python 依赖（分两段，利用 Docker layer cache）----
-# 先只拷依赖清单：改业务代码不会让 pip 重装
-COPY requirements.in constraints-py311.txt requirements-lock.txt /app/
+# ---- Python 依赖（先只拷清单，利用 layer cache）----
+COPY requirements.in requirements-lock.txt constraints-py311.txt /code/
 
-# USE_LOCK=1（默认）：用锁文件可复现构建
-# USE_LOCK=0：忽略锁文件，按 requirements.in 取最新兼容版本（升级验证时用）
+# USE_LOCK=1（默认）：按锁文件可复现构建
+# USE_LOCK=0        ：按 requirements.in 取最新兼容版本（升级验证用）
 ARG USE_LOCK=1
+ARG PIP_INDEX_URL=https://pypi.org/simple
 RUN set -eux; \
-    if [ "${USE_LOCK}" = "1" ]; then \
-        pip install --no-cache-dir -r requirements-lock.txt; \
+    if [ "$USE_LOCK" = "1" ]; then \
+        pip install --no-cache-dir -i "$PIP_INDEX_URL" -r requirements-lock.txt; \
     else \
-        pip install --no-cache-dir -r requirements.in -c constraints-py311.txt; \
+        pip install --no-cache-dir -i "$PIP_INDEX_URL" -r requirements.in -c constraints-py311.txt; \
     fi
 
 # ---- 非 root 运行 ----
-# runtime/ 存登录态（能直接下单的 cookie），/data 存 Redis 之外的本地状态
+# runtime/ 存登录态（能直接下单的 cookie，敏感），/data 存队列与指标，分开挂载
 RUN set -eux; \
     groupadd --gid 10001 py12306; \
     useradd --uid 10001 --gid 10001 --create-home --shell /usr/sbin/nologin py12306; \
-    mkdir -p /app/runtime /data; \
-    chown -R py12306:py12306 /app /data; \
-    chmod 700 /app/runtime
+    mkdir -p /code/runtime /code/data /code/logs; \
+    chown -R py12306:py12306 /code; \
+    chmod 700 /code/runtime
 
-COPY --chown=py12306:py12306 . /app
+COPY --chown=py12306:py12306 . /code
 
 USER py12306
 
-# ---- 健康检查：用 -t 自检，避免「进程活着但 Redis/登录态是坏的」被当成健康 ----
-HEALTHCHECK --interval=30s --timeout=20s --start-period=90s --retries=3 \
-    CMD python main.py -t --health-only || exit 1
+EXPOSE 8008 8010
 
+# 健康检查：走面板的 /panel/api/health（会顺带查 Redis），
+# 避免「进程活着但 Redis/配置是坏的」被判定为健康
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD python -c "import urllib.request,sys;sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8010/panel/api/health',timeout=5).status==200 else 1)"
+
+# 默认启动上游抢票流程（含面板与风控接入）：
+#   docker compose up -d
+# 其它入口：
+#   docker compose run --rm py12306 -t                  自检
+#   docker compose run --rm py12306 serve --port 8010    只启面板
 ENTRYPOINT ["python", "main.py"]
 CMD []

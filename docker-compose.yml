@@ -1,0 +1,71 @@
+# py12306-pro 一键起全套（含 Redis）
+#
+#   cp .env.example .env   # 填 USER_ACCOUNTS_JSON / JWT_SECRET_KEY / RUNTIME_ENC_KEY
+#   docker compose up -d
+#   docker compose logs -f py12306
+#
+# 上游的 docker-compose.yml.example 只有 py12306 一个服务，Redis 要外部提供；
+# 这里按 spec 第 2 节把编排补齐。
+name: py12306-pro
+
+services:
+  redis:
+    image: redis:7-alpine
+    # appendonly yes 是硬要求：否则 Redis 重启会丢队列，正在抢的任务全丢
+    command: ["redis-server", "--appendonly", "yes", "--save", "60", "1"]
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+    # 默认不对外暴露端口；需要本机连调时再打开
+    # ports:
+    #   - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+  py12306:
+    build:
+      context: .
+      args:
+        USE_LOCK: "1"
+        # 国内构建可换镜像源：
+        # PIP_INDEX_URL: https://pypi.tuna.tsinghua.edu.cn/simple
+        PIP_INDEX_URL: https://pypi.org/simple
+    image: py12306-pro:local
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # 容器内 Redis 走 compose 服务名（.env 里若写 127.0.0.1 会被这里覆盖）
+      REDIS_URL: redis://redis:6379/0
+      RUNTIME_DIR: /code/runtime
+      DATA_DIR: /code/data
+      LOG_DIR: /code/logs
+      PANEL_BIND: 0.0.0.0
+      PANEL_ALLOW_REMOTE: "1"
+    ports:
+      - "127.0.0.1:8008:8008"   # 上游 Web 界面（默认只绑本机，别裸奔公网）
+      - "127.0.0.1:8010:8010"   # 可视化面板
+    volumes:
+      # 登录态（敏感）与业务数据分开挂：登录态要单独备份/清理，不该混在临时卷里
+      - runtime-data:/code/runtime
+      - app-data:/code/data
+      - app-logs:/code/logs
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys;sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8010/panel/api/health',timeout=5).status==200 else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  redis-data:
+  runtime-data:
+  app-data:
+  app-logs:
