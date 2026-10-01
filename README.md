@@ -1,5 +1,8 @@
 # py12306 抢票助手（桌面版）
 
+[![构建 Windows 桌面程序](https://github.com/dkvkvk/py12306-pro/actions/workflows/build-windows.yml/badge.svg)](https://github.com/dkvkvk/py12306-pro/actions/workflows/build-windows.yml)
+**[⬇️ 下载最新版 exe / 安装包](https://github.com/dkvkvk/py12306-pro/releases/latest)**（不用装 Python）
+
 > ⚠️ **风险提示（必读）**
 > - 本工具**违反 12306 服务条款**，使用即承担**账号被封、订单被取消**的风险。
 > - 12306 风控会识别高频请求；**即使做了指数退避和熔断，也无法保证不被封**。
@@ -14,7 +17,20 @@
 
 ---
 
-## 1. 快速开始（Windows，两步）
+## 1. 快速开始
+
+### 方式 A：下载 exe（推荐，电脑上不用装 Python）
+
+到 **[Releases 发布页](https://github.com/dkvkvk/py12306-pro/releases/latest)** 下载：
+
+| 文件 | 说明 |
+|---|---|
+| `py12306-Setup-vX.Y.Z.exe` | 安装版（推荐）：中文向导、开始菜单/桌面快捷方式、可卸载 |
+| `py12306-vX.Y.Z-windows-x64.zip` | 便携版：解压即用，不写注册表 |
+
+第一次运行未签名的程序会出现 SmartScreen 蓝色提示，点「更多信息 → 仍要运行」即可。
+
+### 方式 B：从源码跑（开发用）
 
 ```text
 1. 双击「安装环境.bat」     —— 自动创建 .venv 并安装依赖（只需一次）
@@ -138,14 +154,34 @@ UI 线程 ──QTimer 1 秒──▶ core.monitor ──读──▶ core.metri
 
 ---
 
-## 5. 打包成 exe
+## 5. 打包与发布
+
+**推荐做法：交给 GitHub Actions 云端构建**（本地不需要装打包环境）：
+
+- 推到 `main`：自动构建，产物在 Actions 页面的 Artifacts 里可下载（保留 3 天）
+- 打标签 `v*`：自动构建并**创建 Release**，安装包直接挂在发布页上，任何人可下载
+- 手动：Actions 页面点 Run workflow
 
 ```bash
-.venv\Scripts\pyinstaller packaging\py12306.spec --noconfirm
-# 产物：dist\py12306\py12306.exe
+git tag v1.0.1 && git push --tags     # 发一个新版本
 ```
 
-图标由 `packaging/make_icon.py` 用标准库生成（不引入 Pillow）。
+构建流程（见 `.github/workflows/build-windows.yml`）：
+读版本号 → 同步到 exe 资源 → 装依赖 → 跑测试 → PyInstaller →
+**起 exe 跑 --selfcheck 验证可用**（失败就中断，不会发出坏包）→
+打便携版 zip → Inno Setup 生成中文安装包 → 上传/挂 Release。
+
+本地打包（可选，需要自己装 PyInstaller 与 Inno Setup）：
+
+```bash
+python packaging/sync_version.py                      # 版本号同步到 exe 资源
+.venv\Scripts\pyinstaller packaging\py12306.spec --noconfirm
+ISCC /DMyVersion=1.0.0 packaging\installer.iss        # 生成安装包
+```
+
+相关文件：`packaging/py12306.spec`（PyInstaller）、`packaging/installer.iss`（安装包脚本）、
+`packaging/EULA.txt`（安装时展示的许可与风险声明）、`packaging/make_icon.py`（标准库生成图标）、
+`packaging/version_info.txt`（exe 文件属性）。
 打包后仍支持 `--selfcheck`：无人值守验证 exe 能否正常起来，结果写到
 `数据目录/logs/selfcheck.txt`。
 
