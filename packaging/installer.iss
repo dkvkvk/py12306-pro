@@ -32,15 +32,10 @@ LicenseFile=EULA.txt
 ; 图标（由 make_icon.py 生成）
 SetupIconFile=app_icon.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
-; 中文向导
-#if FileExists(AddBackslash(CompilerPath) + "Languages\ChineseSimplified.isl")
-  #define ChineseISL AddBackslash(CompilerPath) + "Languages\ChineseSimplified.isl"
-#else
-  #define ChineseISL "ChineseSimplified.isl"
-#endif
-
+; 中文向导：语言包随仓库携带（Inno Setup 官方安装包不带非英文语言，
+; 直接引用编译器目录会找不到文件；这份来自官方推荐的中文翻译项目，适用 6.5+）
 [Languages]
-Name: "chinese"; MessagesFile: "{#ChineseISL}"
+Name: "chinese"; MessagesFile: "ChineseSimplified.isl"
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
