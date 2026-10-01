@@ -83,6 +83,12 @@ def _run_gui(argv: list[str]) -> int:
 
     logging_setup.setup(level=settings.log_level, to_console=True)
 
+    # 指标库固定落在数据目录：界面/面板/自检都读它，而且自检要验证数据目录可写
+    from core.metrics import MetricsStore, set_store
+
+    store = MetricsStore(db_path=paths.metrics_db())
+    set_store(store)
+
     uplink = None
     core_config = None
     try:
@@ -94,7 +100,7 @@ def _run_gui(argv: list[str]) -> int:
         # 配置不全不阻塞开窗：界面上会提示去补 .env
         print("配置未就绪（仍会打开窗口）：%s" % exc, file=sys.stderr)
 
-    monitor = Monitor(uplink=uplink)
+    monitor = Monitor(store=store, uplink=uplink)
     window = MainWindow(settings=settings, monitor=monitor, uplink=uplink)
     window.show()
 
@@ -118,8 +124,10 @@ def _run_gui(argv: list[str]) -> int:
 
         def report_and_quit() -> None:
             snapshot = monitor.snapshot(buckets=5)
-            # 判定标准：窗口起来了 + 定时刷新在跑 + 能读到指标库（与有没有配任务无关）
-            ok = bool(snapshot.ts > 0 and snapshot.metrics_db)
+            # 判定标准（与有没有配账号/任务无关，那些缺了也不影响程序可用）：
+            #   1. 窗口起来了、定时刷新在跑 -> snapshot.ts 有值
+            #   2. 数据目录可写、指标库建起来了 -> metrics_db 存在且文件真的落盘
+            ok = bool(snapshot.ts > 0 and snapshot.metrics_db and paths.metrics_db().is_file())
             # 第一行必须以 OK/FAIL 开头：CI 用 grep "^OK" 判定打包出的 exe 是否可用
             line = "%s version=%s tasks=%d engine_running=%s metrics_db=%s\n" % (
                 "OK" if ok else "FAIL",
