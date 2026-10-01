@@ -298,7 +298,7 @@ class LoginStateStore:
             return []
         out: List[StoredState] = []
         for path in sorted(self.root.iterdir()):
-            if not path.is_file() or path.name.endswith(".tmp"):
+            if not self._is_state_file(path):
                 continue
             try:
                 st = path.stat()
@@ -315,17 +315,29 @@ class LoginStateStore:
             )
         return out
 
+    def _is_state_file(self, path: Path) -> bool:
+        """只认本模块写出的登录态文件。
+
+        必须收得很紧：runtime/user 下通常还有一个 .gitignore（上游靠它保住目录），
+        无差别删除会把目录里的占位文件也删掉，导致目录不再被 git 跟踪。
+        """
+        if not path.is_file() or path.name.startswith("."):
+            return False
+        if path.name.endswith(".tmp") or ".tmp" in path.name:
+            return False
+        return path.name.endswith(".json.enc") or path.name.endswith(".json")
+
     def purge(self, names: Optional[Iterable[str]] = None) -> List[Path]:
-        """一键清除登录态。返回被删除的文件列表。"""
+        """一键清除登录态。返回被删除的文件列表。只动登录态文件，不动其它文件。"""
         removed: List[Path] = []
         targets: List[Path] = []
         if names is None:
             if self.root.is_dir():
-                targets = [p for p in self.root.iterdir() if p.is_file()]
+                targets = [p for p in self.root.iterdir() if self._is_state_file(p)]
         else:
             for name in names:
                 for candidate in (self.path_for(name), self.legacy_path_for(name)):
-                    if candidate.is_file():
+                    if self._is_state_file(candidate):
                         targets.append(candidate)
         for path in targets:
             try:

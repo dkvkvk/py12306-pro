@@ -153,6 +153,48 @@ class TestLoginStateStore:
         store.purge()
         assert not store.root.exists()
 
+    def test_purge_never_touches_non_state_files(self, tmp_path):
+        """runtime/user 下还有上游用来保住目录的 .gitignore，purge 不能连它一起删。"""
+        root = tmp_path / "user"
+        root.mkdir(parents=True)
+        placeholder = root / ".gitignore"
+        placeholder.write_text("!*\n", encoding="utf-8")
+        keep = root / "notes.md"
+        keep.write_text("x", encoding="utf-8")
+
+        store = LoginStateStore(root, SECRET)
+        store.save("acct", {"cookies": {}})
+        removed = store.purge()
+
+        assert {path.name for path in removed} == {"acct.json.enc"}
+        assert placeholder.exists()
+        assert keep.exists()
+
+    def test_purge_keeps_directory_when_only_placeholders_remain(self, tmp_path):
+        root = tmp_path / "user"
+        root.mkdir(parents=True)
+        placeholder = root / ".gitignore"
+        placeholder.write_text("!*\n", encoding="utf-8")
+
+        store = LoginStateStore(root, SECRET)
+        store.save("acct", {"cookies": {}})
+        store.purge()
+
+        assert root.is_dir()
+        assert placeholder.exists()
+
+    def test_list_states_ignores_placeholders_and_temp(self, tmp_path):
+        root = tmp_path / "user"
+        root.mkdir(parents=True)
+        (root / ".gitignore").write_text("!*\n", encoding="utf-8")
+        (root / "acct.json.enc.tmp123").write_text("partial", encoding="utf-8")
+        (root / "readme.txt").write_text("hi", encoding="utf-8")
+
+        store = LoginStateStore(root, SECRET)
+        store.save("acct", {"cookies": {}})
+
+        assert [item.name for item in store.list_states()] == ["acct"]
+
     def test_audit_reports_encryption_and_permissions(self, tmp_path):
         store = self._store(tmp_path)
         store.save("acct", {"x": 1})
