@@ -11,6 +11,15 @@ import re
 import sys
 from pathlib import Path
 
+# Windows 控制台默认 cp1252，下面的中文输出会直接抛 UnicodeEncodeError
+for _stream in (sys.stdout, sys.stderr):
+    _reconfigure = getattr(_stream, "reconfigure", None)
+    if _reconfigure is not None:
+        try:
+            _reconfigure(encoding="utf-8", errors="replace")
+        except (ValueError, OSError):
+            pass
+
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 

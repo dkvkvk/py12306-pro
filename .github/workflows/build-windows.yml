@@ -7,6 +7,11 @@ on:
     tags: ["v*"]
   workflow_dispatch:
 
+env:
+  # Windows 上 Python 默认用 cp1252 输出，脚本里的中文 print 会直接崩；强制 UTF-8
+  PYTHONUTF8: "1"
+  PYTHONIOENCODING: utf-8
+
 concurrency:
   group: build-${{ github.ref }}
   cancel-in-progress: true
