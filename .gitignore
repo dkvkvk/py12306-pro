@@ -4,28 +4,31 @@
 !.env.example
 env.py
 env.docker.py
+
+# 运行期产生的目录（程序与测试都会写）
 runtime/
-data/
 logs/
-*.key
-*.pem
+.gui-shot/
+.venv/
+.venv-gui/
+venv/
+wheels/
+build/
+dist/
+
+# 注意：py12306/data/ 里是上游必需的静态数据（stations.txt 站名表、cdn.txt、images/），
+# 必须跟踪；只有运行期生成的指标库要忽略。
+py12306/../data/metrics.sqlite3
+data/metrics.sqlite3
+*.sqlite3
 
 # Python
 __pycache__/
 *.py[cod]
-.venv/
-venv/
 .pytest_cache/
 .pytest-tmp/
 *.egg-info/
 report.json
 req_report.json
 query.log
-
-# 本地产物
-.gui-shot/
-.venv-gui/
-wheels/
-build/
-dist/
 *.spec.bak

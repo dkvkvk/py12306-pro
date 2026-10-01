@@ -15,14 +15,30 @@ from pathlib import Path
 
 ROOT = Path(SPECPATH).parent  # noqa: F821 - PyInstaller 注入
 
+# 必需的数据文件（缺了程序运行不起来，所以这里直接失败，而不是打个残包）
+REQUIRED = [
+    ROOT / "data" / "stations.txt",      # 站名 -> 站码表，查询与下单都要用
+    ROOT / "webpanel" / "ui" / "index.html",   # 网页面板界面
+]
+missing = [str(p) for p in REQUIRED if not p.is_file()]
+if missing:
+    raise SystemExit("打包失败：缺少必需文件 %s（CI 上多半是被 .gitignore 排除了）" % missing)
+
+# 可选数据：存在就打进去
 datas = [
     (str(ROOT / "webpanel" / "ui"), "webpanel/ui"),
-    (str(ROOT / "py12306" / "web" / "static"), "py12306/web/static"),
     (str(ROOT / "data"), "data"),
 ]
-example = ROOT / ".env.example"
-if example.is_file():
-    datas.append((str(example), "."))
+for optional in (
+    ROOT / "py12306" / "web" / "static",   # 上游编译好的 Web 界面
+    ROOT / "data" / "images",
+):
+    if optional.is_dir():
+        datas.append((str(optional), str(optional.relative_to(ROOT)).replace("\\", "/")))
+
+for extra in (ROOT / ".env.example", ROOT / "packaging" / "EULA.txt"):
+    if extra.is_file():
+        datas.append((str(extra), "."))
 
 icon = ROOT / "packaging" / "app_icon.ico"
 if not icon.is_file():
