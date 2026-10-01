@@ -1,0 +1,20 @@
+# Python 3.11 兼容性上限（constraints）。
+# 作用：这些包在新版本里抬高了 requires-python 或换了不兼容的 API，
+# 加上限可以把「解析结果」钉在 3.11 能装、且与现有代码 API 相容的区间。
+# 只写上限，不写下限（下限由 requirements.in 负责）。
+
+# lxml 6.x 起要求 Python >= 3.13；3.11 镜像上必须留在 5.x
+lxml<6
+
+# cssselect 2.x 重写了接口，pyquery 2.1 之前的取值/伪类行为有差异
+cssselect<2
+
+# redis 6.x 仍在快速演进（连接池/重试语义），先钉在 5.x 观察
+redis<6
+
+# Flask 3.1 是 3.11 上验证过的最后一个大版本线
+Flask<3.2
+Werkzeug<3.2
+
+# pytest 9.x 抬了最低 Python 版本
+pytest<9

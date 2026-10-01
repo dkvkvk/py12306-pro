@@ -1,0 +1,30 @@
+# 直接依赖清单（P0：环境现代化）。
+# 只写“直接依赖 + 较宽的版本区间”，精确锁版本见 requirements-lock.txt，
+# 3.11 兼容性上限见 constraints-py311.txt。
+# 生成锁文件：
+#   pip install --dry-run --ignore-installed --python-version 3.11 \
+#     --only-binary=:all: -r requirements.in -c constraints-py311.txt --report report.json
+#
+# pip 源不再硬编码在文件里：用 PIP_INDEX_URL 环境变量切换（见 railkit/env.example）。
+
+# ---- 运行时必需 ----
+requests>=2.32,<3
+requests-html>=0.10,<0.11
+redis>=4.5,<6
+fake-useragent>=1.4,<3
+pyquery>=2.0,<3
+colorama>=0.4.6
+
+# ---- 验证码（可选：AUTO_CODE_PLATFORM != free 时不需要）----
+pyppeteer-box==0.0.27
+
+# ---- Web 界面（可选：只跑 CLIENT 模式时不需要）----
+Flask>=3.0,<4
+Flask-JWT-Extended>=4.6,<5
+
+# ---- 安全：登录态落盘加密（P0-3）----
+# 只用 AES-GCM + scrypt 做本地静态加密，不做证书/密钥交换
+cryptography>=42,<51
+
+# ---- 开发/测试 ----
+pytest>=8.0

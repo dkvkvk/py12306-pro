@@ -1,0 +1,22 @@
+# 密钥与登录态：绝对不能进仓库
+.env
+.env.*
+!.env.example
+env.py
+runtime/
+data/
+logs/
+*.key
+*.pem
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.pytest-tmp/
+*.egg-info/
+report.json
+rep.json
+query.log
