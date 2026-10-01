@@ -1,3 +1,13 @@
+# 这是「上游 pjialin/py12306 自带的 requirements.txt」的存档，**不要用它装依赖**。
+#
+# 为什么留档：上游那份写的是 Flask-JWT-Extended==3.15.0 等旧版本，而本仓库代码已适配 4.x
+# （@jwt_required 必须调用、受保护路由要显式 endpoint）。照它装出来的环境，网页面板会直接起不来。
+#
+# 本仓库请用：
+#   requirements.txt        终端用户安装用（全部可从 wheel 安装）
+#   requirements-lock.txt   完全复现开发环境用
+#   requirements.in         直接依赖与版本区间（改依赖改这个）
+
 -i https://pypi.tuna.tsinghua.edu.cn/simple
 appdirs==1.4.3
 beautifulsoup4==4.7.0

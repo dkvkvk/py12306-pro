@@ -54,6 +54,20 @@ class TestDispatch:
         cli.main([])
         assert "风险提示" in capsys.readouterr().out
 
+    def test_usage_tells_user_gui_is_default(self, capsys):
+        """没有命令行抢票入口，帮助里必须说清楚默认是开窗口。"""
+        cli.main([])
+        out = capsys.readouterr().out
+        assert "启动桌面窗口" in out
+        assert "run_upstream" not in out
+
+    def test_unknown_argument_fails_loudly(self, capsys):
+        """以前未知参数会走已删除的上游入口（必然 NameError），现在必须明确报错。"""
+        assert cli.main(["--不存在的参数"]) == 2
+        err = capsys.readouterr().err
+        assert "无法识别的参数" in err
+        assert "启动桌面窗口" in err
+
 
 class TestWaitlistCommand:
     def test_missing_config_tells_user_what_to_do(self, monkeypatch, capsys):

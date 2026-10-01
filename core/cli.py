@@ -468,34 +468,19 @@ def cmd_serve(argv: List[str]) -> int:
 USAGE = """py12306-pro
 
 用法：
-    python app.py -t | --test        启动自检（不查票，退出码 0/1）
-    python app.py                    上游正常抢票流程（自带面板与风控）
+    python app.py                    启动桌面窗口（默认）
+    python app.py -t | --test        命令行自检（不查票，退出码 0/1）
     python app.py serve [--port N]   只启动可视化面板
     python app.py waitlist           候补模式（官方渠道，按 WAITLIST_JSON）
     python app.py waitlist --simulate 离线演练候补状态机与告警
     python app.py --purge-login-state 清除登录态
     python app.py --version
 
+抢票流程在桌面窗口里启动（工具栏「开始抢票」），没有命令行等价入口。
+
 风险提示：本工具违反 12306 服务条款，使用即承担账号被封、订单被取消的风险；
           官方候补是更稳妥的选择，应优先使用。
 """
-
-
-def run_upstream(argv: List[str]) -> int:
-    """走上游 main.py 的抢票流程，但先完成 core 装配。"""
-    force_utf8_console()
-    try:
-        config, integration, _policy = setup(patch_query_loop=True)
-    except Exception as exc:
-        print("配置校验失败，已中止启动：\n%s" % exc, file=sys.stderr)
-        return 1
-    setup_logging(config)
-
-    # 上游 main.py 自己会解析 argv（-c/--config、-t/--test），这里原样透传
-    sys.argv = ["main.py"] + [a for a in argv]
-    from upstream_entry import upstream_main  # 兼容两种入口布局
-
-    return upstream_main() or 0
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -518,4 +503,6 @@ def main(argv: Optional[List[str]] = None) -> int:
     if not argv:
         print(USAGE)
         return 0
-    return run_upstream(argv)
+    print("无法识别的参数：%s\n" % " ".join(argv), file=sys.stderr)
+    print(USAGE, file=sys.stderr)
+    return 2

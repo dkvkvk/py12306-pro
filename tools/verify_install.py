@@ -14,7 +14,13 @@ sys.path.insert(0, str(ROOT))
 modules = []
 for info in pkgutil.walk_packages([str(ROOT / "py12306")], prefix="py12306."):
     modules.append(info.name)
-modules += ["main", "upstream_entry", "settings"]
+modules += ["app"]
+for extra in ("core", "ui", "webpanel"):
+    try:
+        importlib.import_module(extra)
+        modules.append(extra)
+    except Exception as exc:
+        failed.append((extra, "%s: %s" % (type(exc).__name__, exc)))
 try:
     import core
     for info in pkgutil.iter_modules(core.__path__):

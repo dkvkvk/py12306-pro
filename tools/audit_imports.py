@@ -10,6 +10,7 @@ STDLIB = set(sys.stdlib_module_names)
 
 # 上游代码里用到的「import 名 -> PyPI 发行名」映射
 DIST_ALIASES = {
+    "PySide6": "PySide6-Essentials",
     "png": "pypng",
     "bs4": "beautifulsoup4",
     "flask": "Flask",
@@ -36,9 +37,11 @@ DIST_ALIASES = {
     "cryptography": "cryptography",
 }
 
-LOCAL_PREFIXES = ("py12306", "core")
+# 本项目自己的包：不算第三方依赖
+LOCAL_PREFIXES = ("py12306", "core", "ui", "webpanel", "app")
 
-files = sorted(list(ROOT.glob("py12306/**/*.py")) + [ROOT / "main.py", ROOT / "upstream_entry.py", ROOT / "settings.py"])
+ROOT_FILES = ["app.py"]
+files = sorted(list(ROOT.glob("py12306/**/*.py")) + list(ROOT.glob("core/*.py")) + list(ROOT.glob("ui/*.py")) + list(ROOT.glob("webpanel/*.py")) + [ROOT / name for name in ROOT_FILES])
 found: dict[str, set[str]] = {}
 for path in files:
     try:
@@ -58,11 +61,12 @@ for path in files:
                 top = node.module.split(".")[0]
                 found.setdefault(top, set()).add(str(path.relative_to(ROOT)))
 
-lock = (ROOT / "requirements-lock.txt").read_text(encoding="utf-8")
+# 以使用者侧的 requirements.txt 为准做对账（它就是构建镜像时装的清单）
+lock = (ROOT / "requirements.txt").read_text(encoding="utf-8")
 locked = set()
 for line in lock.splitlines():
     line = line.strip()
-    if not line or line.startswith("#"):
+    if not line or line.startswith("#") or line.startswith("-"):
         continue
     locked.add(line.split("==")[0].strip().lower().replace("_", "-"))
 

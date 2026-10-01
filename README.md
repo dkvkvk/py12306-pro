@@ -86,12 +86,22 @@ ui/                        Qt 界面（只读 core，不直接碰上游对象）
   dashboard_widgets.py     状态卡 / 曲线图 / 任务表 / 事件表
   main_window.py           主窗口：运行看板 / 风控事件 / 设置
   panel_thread.py          在后台线程里起 Web 面板
-webpanel/                  可选 Web 面板（Flask 蓝图，零构建前端）
+webpanel/                  可选 Web 面板（Flask 蓝图 + server.py 应用工厂 + 零构建前端）
 py12306/                   上游业务代码（登录、下单、乘客、CDN），只做必要的兼容修补
-packaging/                 PyInstaller 配置 + 图标生成 + 安装包脚本
+packaging/                 PyInstaller spec / 安装包脚本 / EULA / 版本资源 / 图标生成
 tests/                     397 个用例（pytest 或 tests/run_all.py 都能跑）
-tools/                     截图、仿真数据、锁文件生成、依赖对账等开发脚本
+tools/                     仿真数据、桌面截图、锁文件生成、依赖对账（开发辅助）
+data/                      上游必需的静态数据（stations.txt 站名表、cdn.txt、图片）
+env.py.example             上游旧配置文件格式示例（仅用于对照 WAITLIST/QUERY_JOBS 字段）
+requirements.txt           终端用户安装用（全部可从 wheel 安装）
+requirements-lock.txt      完全复现开发环境用
+requirements-upstream.txt  上游原始清单存档（**不要用它装依赖**，原因见文件头）
 ```
+
+**没有的东西**（重构时删掉了，避免混淆）：
+Dockerfile / docker-compose.yml（改为本机直接运行）、上游那套 env 示例
+（`env.docker.py.example` / `env.slave.py.example`，单机模式用不到）、
+旧入口 `main.py`（改成 `app.py`）、一次性迁移脚本（JWT 修补、图标生成等，已执行完）。
 
 ### 线程模型
 
@@ -113,7 +123,8 @@ UI 线程 ──QTimer 1 秒──▶ core.monitor ──读──▶ core.metri
   2. 受保护路由补显式 `endpoint=`（4.x 不再保留 `__name__`，否则 Web 界面起不来）；
   3. `Web.__init__` 注册蓝图改为幂等（重建实例不再抛 endpoint 冲突）；
   4. `get_file_modify_time` 对不存在的配置文件返回 0（纯 `.env` 部署时不再崩）。
-- 其余全是新增层。上游原本的 `main.py` 保留为 `upstream_entry.py`。
+- 其余全是新增层。上游原本 `main.py` 里那套启动流程（App.run / run_check / User.run / Query.run）
+  被 `core/uplink.py` + `core/engine.py` 取代，所以那个文件已经删除，不再是重复入口。
 
 ---
 
